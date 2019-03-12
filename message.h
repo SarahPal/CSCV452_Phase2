@@ -1,4 +1,9 @@
 #define DEBUG2 1
+#define INACTIVE 0
+#define ACTIVE 1
+#define CLOCKMB 0
+#define TERMMB 1
+#define DISKMB 5
 
 typedef struct mail_slot *slot_ptr;
 typedef struct mailbox mail_box;
@@ -6,6 +11,8 @@ typedef struct mbox_proc *mbox_proc_ptr;
 
 struct mailbox {
    int           mbox_id;
+   int           slot_status;
+   int           num_slots;
    /* other items as needed... */
 };
 
