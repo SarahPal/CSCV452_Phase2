@@ -56,8 +56,23 @@ int start1(char *arg)
     * Initialize int_vec and sys_vec, allocate mailboxes for interrupt
     * handlers.  Etc... */
    for(int i = 0; i <= MAXMBOX; i++)
-      MailBoxTable[i]-> = NULL;
-
+   {
+      MailBoxTable[i]->mbox_id = i;
+      MailBoxTable[i]->slot_status = UNUSED;
+   }
+    
+   //initialize int_vec
+   //initialize sys_vec
+   
+   IntHandMB[CLOCKMB] = MBoxCreate(0, sizeof(int)); //Clock MB
+   IntHandMB[TERMMB] = MBoxCreate(0, sizeof(int)); //Terminal 1
+   IntHandMB[TERMMB + 1] = MBoxCreate(0, sizeof(int)); //Terminal 2
+   IntHandMB[TERMMB + 2] = MBoxCreate(0, sizeof(int)); //Terminal 3
+   IntHandMB[TERMMB + 3] = MBoxCreate(0, sizeof(int)); //Terminal 4
+   IntHandMB[DISKMB] = MBoxCreate(0, sizeof(int)); //Disk 1
+   IntHandMB[DISKMB + 1] = MBoxCreate(0, sizeof(int)); //Disk 2
+   
+   
    enableInterrupts();
 
    /* Create a process for start2, then block on a join until start2 quits */
@@ -83,6 +98,11 @@ int start1(char *arg)
    ----------------------------------------------------------------------- */
 int MboxCreate(int slots, int slot_size)
 {
+   disableinterrupts();
+   check_kernel_mode("MboxCreate");
+   
+   //insert debugging statements
+  //find a free mailbox, then initialize it. 
 } /* MboxCreate */
 
 
