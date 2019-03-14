@@ -11,8 +11,9 @@ typedef struct mbox_proc *mbox_proc_ptr;
 
 struct mailbox {
    int           mbox_id;
-   int           slot_status;
+   //int           slot_status;
    int           num_slots;
+   int           slot_size;
    /* other items as needed... */
 };
 
