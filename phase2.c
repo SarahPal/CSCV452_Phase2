@@ -23,10 +23,12 @@ int MboxRelease(int mailboxID);
 int MboxCondSend(int mailboxID, void *message, int message_size);
 int MboxCondReceive(int mailboxID, void *message, int max_message_size);
 int waitdevice(int type, int unit, int *status);
+int getInactive(void);
 
 /* -------------------------- Globals ------------------------------------- */
 
 int debugflag2 = 0;
+int numMailboxes = 0;
 
 /* the mail boxes */
 mail_box MailBoxTable[MAXMBOX];
@@ -100,9 +102,30 @@ int MboxCreate(int slots, int slot_size)
 {
    disableinterrupts();
    check_kernel_mode("MboxCreate");
+   int next_Available = getinactive(); 
    
-   //insert debugging statements
-  //find a free mailbox, then initialize it. 
+   if(next_Available == -1)
+   {
+      if(DEBUG2 && debugflag2)
+      {
+         console("MboxCreate: max boxes reached, returning -1");
+      }
+      return -1;
+   }
+   mailbox *nBox = &MailBoxTable[next_Available];
+    
+   nBox->mboxID = next_Available++;
+   nBox->num_slots = slots;
+   nBox->slot_size = slot_size;
+   nBox->status = ACTIVE;     
+   
+   if(DEBUG2 && debugflag2)
+   {
+      console("Created mailbox with id %d, total slots = %d, slot size = %d\n", nBox->mBoxID, nBox->num_slots,
+              nBox->slot_size);
+   }      
+   enableinterrupts();
+   return nBox->mboxID;
 } /* MboxCreate */
 
 
@@ -199,5 +222,19 @@ int MboxCondReceive(int mailboxID, void *message, int max_message_size)
 int waitdevice(int type, int unit, int *status)
 {
 } /* waitdevice */
+
+
+//Returns id of the next inactive mailbox. Returns -1 if non exists.
+int getInactive()
+{
+   for(int i = 0; i < MAXMBOX; i++)
+   {
+      if(MailBoxTable[i].status == INACTIVE)
+      {
+         return i;
+      }
+   }
+   return -1;
+}
 
 
