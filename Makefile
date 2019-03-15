@@ -19,10 +19,10 @@ TESTS= test00 test01 test02 test03 test04 test05 test06 test07 test08 \
        test27 test28 test29 test30 test31 test32 test33 test34 test35 \
        test36 test37 test38 test39 test40 test41 test42
 PHASE1LIB = lxuphase1
-LIBS = -lphase2 -lusloss -l${PHASE1LIB}
+LIBS = -l${PHASE1LIB} -lphase2 -lusloss -l${PHASE1LIB}
 
 $(TARGET):	$(COBJS)
-		$(AR) -r $@ $(COBJS) 
+		$(AR) -r $@ $(COBJS)
 
 $(TESTS):	$(TARGET) p1.o
 	$(CC) $(CFLAGS) -c $(TESTDIR)/$@.c
@@ -33,5 +33,3 @@ clean:
 
 phase2.o:	message.h
 	$(CC) $(CFLAGS) -c phase2.c
-
-
