@@ -24,12 +24,18 @@ int MboxRelease(int mailboxID);
 int MboxCondSend(int mailboxID, void *message, int message_size);
 int MboxCondReceive(int mailboxID, void *message, int max_message_size);
 int waitdevice(int type, int unit, int *status);
-int getInactive(void);
+int getInactive();
+
+static void check_kernel_mode(char *caller_name);
+static void enable_interrupts(char *caller_name);
+static void disable_interrupts(char *caller_name);
+
 
 /* -------------------------- Globals ------------------------------------- */
 
 int debugflag2 = 0;
 int numMailboxes = 0;
+int max_message_size = 50;
 
 /* the mail boxes */
 mail_box MailBoxTable[MAXMBOX];
@@ -58,7 +64,7 @@ int start1(char *arg)
    check_kernel_mode("start1");
 
    /* Disable interrupts */
-   disableInterrupts();
+   disable_interrupts("start1");
 
    /* Initialize the mail box table, slots, & other data structures.
     * Initialize int_vec and sys_vec, allocate mailboxes for interrupt
@@ -83,7 +89,7 @@ int start1(char *arg)
    IntHandMB[DISKMB + 1] = MboxCreate(0, sizeof(int)); //Disk 2
 
 
-   enableInterrupts();
+   enable_interrupts("start1");
 
    /* Create a process for start2, then block on a join until start2 quits */
    if (DEBUG2 && debugflag2)
@@ -108,9 +114,9 @@ int start1(char *arg)
    ----------------------------------------------------------------------- */
 int MboxCreate(int slots, int slot_size)
 {
-   disableInterrupts();
+   disable_interrupts("MboxCreate");
    check_kernel_mode("MboxCreate");
-   int next_Available = getinactive();
+   int next_Available = getInactive();
 
    if(next_Available == -1)
    {
@@ -132,7 +138,7 @@ int MboxCreate(int slots, int slot_size)
       console("Created mailbox with id %d, total slots = %d, slot size = %d\n",
       nBox->mbox_id, nBox->num_slots,nBox->slot_size);
    }
-   enableInterrupts();
+   enable_interrupts("MboxCreate");
    return nBox->mbox_id;
 } /* MboxCreate */
 
@@ -147,7 +153,7 @@ int MboxCreate(int slots, int slot_size)
    ----------------------------------------------------------------------- */
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 {
-    disableInterrupts();
+    disable_interrupts("MboxSend");
     int mbStatus = MailBoxTable[mbox_id].status;
     if(DEBUG2 && debugflag2)
         console("MboxSend(): Checking for possible errors...");
@@ -175,7 +181,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     //Block sender if mailbox has no available slots.
     //TODO: This crap
 
-    enableInterrupts();
+    enable_interrupts("MboxSend");
     return 0;
 
 } /* MboxSend */
@@ -192,7 +198,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
    ----------------------------------------------------------------------- */
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 {
-    disableInterrupts();
+    disable_interrupts("MboxReceive");
     int mbStatus = MailBoxTable[mbox_id].status;
 
     if(mbStatus == INACTIVE)
@@ -211,7 +217,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     //Block the receiver if there are not messages in the mailbox
     //TODO: This crap
 
-    enableInterrupts();
+    enable_interrupts("MboxReceive");
     return msg_size;
 } /* MboxReceive */
 
@@ -300,3 +306,58 @@ int getInactive()
    }
    return -1;
 }
+/*----------------------------------------------------------------*
+ * Name        : check_kernel_mode                                *
+ * Purpose     : Checks the current kernel mode.                  *
+ * Parameters  : name of calling function                         *
+ * Returns     : nothing                                          *
+ * Side Effects: halts process if in user mode                    *
+ *----------------------------------------------------------------*/
+static void check_kernel_mode(char *caller_name)
+{
+   union psr_values caller_psr;                                     /* holds the current psr values */
+   if (DEBUG2 && debugflag2)
+      console("    - check_kernel_mode(): called for function %s -\n", caller_name);
+
+ /* checks if in kernel mode, halts otherwise */
+   caller_psr.integer_part = psr_get();                             /* stores current psr values into structure */
+   if (caller_psr.bits.cur_mode != 1)
+   {
+      console("       - %s(): called while not in kernel mode, by process. Halting... -\n", caller_name);
+      halt(1);
+   }
+}/* check_kernel_mode */
+
+
+
+/*----------------------------------------------------------------*
+ * Name        : disable_interrupts                               *
+ * Purpose     : Disables all interupts.                          *
+ * Parameters  : name of calling function                         *
+ * Returns     : nothing                                          *
+ * Side Effects: disables interupts                               *
+ *----------------------------------------------------------------*/
+void disable_interrupts(char *caller_name)
+{
+   if (DEBUG2 && debugflag2)
+      console("    - disable_interrupts(): interupts turned off for %s -\n", caller_name);
+
+   psr_set( psr_get() & ~PSR_CURRENT_INT );
+}/* disable_interrupts */
+
+
+
+/*----------------------------------------------------------------*
+ * Name        : enable_interrupts                                *
+ * Purpose     : Enables all interupts.                           *
+ * Parameters  : name of calling function                         *
+ * Returns     : nothing                                          *
+ * Side Effects: enables interupts                                *
+ *----------------------------------------------------------------*/
+void enable_interrupts(char *caller_name)
+{
+   if (DEBUG2 && debugflag2)
+      console("    - enable_interrupts(): interupts turned on for %s -\n", caller_name);
+
+   psr_set( psr_get() | PSR_CURRENT_INT );
+}/* enable_interrupts */
