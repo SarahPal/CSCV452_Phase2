@@ -10,6 +10,7 @@
 #include <phase2.h>
 #include <usloss.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "message.h"
 
@@ -18,6 +19,7 @@ int start1 (char *);
 extern int start2 (char *);
 
 int MboxCreate(int slots, int slot_size);
+int SlotCreate(void *msg_ptr, int msg_size);
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size);
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size);
 int MboxRelease(int mailboxID);
@@ -35,6 +37,8 @@ static void disable_interrupts(char *caller_name);
 
 int debugflag2 = 0;
 int numMailboxes = 0;
+int next_slot_id = 0;
+int num_slots = 0;
 
 /* the mail boxes */
 mail_box MailBoxTable[MAXMBOX];
@@ -96,6 +100,8 @@ int start1(char *arg)
   }
    //TODO: initialize int_vec
    //TODO: initialize sys_vec
+
+   //Interrupt mailboxes.
    int IntHandMB[7];
 
    IntHandMB[CLOCKMB] = MboxCreate(0, sizeof(int)); //Clock MB
@@ -132,8 +138,9 @@ int start1(char *arg)
    ----------------------------------------------------------------------- */
 int MboxCreate(int slots, int slot_size)
 {
-   disable_interrupts("MboxCreate");
+
    check_kernel_mode("MboxCreate");
+   disable_interrupts("MboxCreate");
    int next_Available = getInactive();
 
    if(next_Available == -1)
@@ -160,7 +167,26 @@ int MboxCreate(int slots, int slot_size)
    return nBox->mbox_id;
 } /* MboxCreate */
 
+int SlotCreate(void *msg_ptr, int msg_size)
+{
+    check_kernel_mode("SlotCreate");
+    disable_interrupts("SlotCreate");
 
+    slot_ptr slot = &Mail_Slots[next_slot_id];
+    slot->slot_id = next_slot_id++;
+    slot->status = USED;
+    slot->message_size = msg_size;
+    num_slots++;
+
+    memcpy(slot->message, msg_ptr, msg_size);
+
+    if(DEBUG2 && debugflag2)
+        console("SlotCreate(): Created new slot with slot ID: %d \n", slot->slot_id);
+    enable_interrupts("SlotCreate");
+
+    return slot->slot_id;
+
+} /* SlotCreate */
 /* ------------------------------------------------------------------------
    Name - MboxSend
    Purpose - Put a message into a slot for the indicated mailbox.
@@ -171,48 +197,87 @@ int MboxCreate(int slots, int slot_size)
    ----------------------------------------------------------------------- */
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 {
+    check_kernel_mode("MboxSend");
     disable_interrupts("MboxSend");
-    int mbStatus = MailBoxTable[mbox_id].status;
+    mail_box *mbox = &(MailBoxTable[mbox_id]);
+
     if(DEBUG2 && debugflag2)
-        console("MboxSend(): Checking for possible errors...");
+        console("MboxSend(): Checking for possible errors...\n");
     //Check for possible errors
-    if(mbStatus == INACTIVE)
+
+    if(mbox_id < 0 || mbox_id >= MAXMBOX)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxSend(): Invalid Mailbox ID, Returning...\n");
+        enable_interrupts("MboxSend");
+        return -1;
+    }
+    if(MailBoxTable[mbox_id].status == INACTIVE)
     {
         //Some error message
+        enable_interrupts("MboxSend");
         return -1;
     }
     if(msg_size > MAX_MESSAGE)
     {
         //some error message
+        enable_interrupts("MboxSend");
+        return -1;
+    }
+    mail_box *nBox = &MailBoxTable[mbox_id];
+
+    if(nBox->status == INACTIVE || msg_size < 0 || msg_size > nBox->slot_size)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxSend(): Invalid argument(s). Returning...\n");
+        enable_interrupts("MboxSend");
         return -1;
     }
 
     //If slot is available in this mailbox, allocate a slot from the mail_slot
     //table
-    if(MailBoxTable[mbox_id].num_slots == 0)
+    /*if(MailBoxTable[mbox_id].num_slots == 0)
     {
         if(DEBUG2 && debugflag2)
         {
-            console("MboxSend(): Zero slot mailbox. Returning...");
+            console("MboxSend(): Zero slot mailbox. Returning...\n");
         }
+        enable_interrupts("MboxSend");
         return -1;
-    }
+    }*/
 
     //If the Mail slot overflows, halt usloss
     //TODO: This crap
-    int numberslotsinuse = 20; //so i dont get no crap from the compiler.
-    if(numberslotsinuse == MAXSLOTS)
+    if(num_slots == MAXSLOTS)
     {
         //check for conditional send
         if(DEBUG2 && debugflag2)
         {
-            console("MboxSend(): Mailslot has overflowed. Halting...");
+            console("MboxSend(): Mailslot has overflowed. Halting...\n");
         }
         halt(1);
     }
 
     //Copy message into allocated slot (use memcpy or strcpy)
-    //TODO: This crap
+
+    int nSlot_id = SlotCreate(msg_ptr, msg_size);
+    console("Creating slot\n");
+    slot_ptr slot = &Mail_Slots[nSlot_id];
+    //Add slot to mailbox
+    console("Adding slot to mailbox...\n");
+    if(mbox->head == NULL)
+    {
+        console("Adding slot as head\n");
+        mbox->head = slot;
+    }
+    else
+    {
+        console("Adding slot as next slot\n");
+        mbox->end->next_slot = slot;
+    }
+    mbox->end = slot;
+
+    num_slots++;
 
     //Block sender if mailbox has no available slots.
     //TODO: This crap
@@ -234,8 +299,9 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
    ----------------------------------------------------------------------- */
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 {
-    disable_interrupts("MboxReceive");
+
     check_kernel_mode("mBoxReceive");
+    disable_interrupts("MboxReceive");
 
     int mbStatus = MailBoxTable[mbox_id].status;
 
@@ -276,8 +342,8 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 
 int MboxRelease(int mailboxID)
 {
-    disable_interrupts("MboxRelease");
     check_kernel_mode("MboxRelease");
+    disable_interrupts("MboxRelease");
 
     if(mailboxID < 0 || mailboxID >= MAXMBOX)
     {
@@ -308,6 +374,10 @@ int MboxRelease(int mailboxID)
    ----------------------------------------------------------------------- */
 int MboxCondSend(int mailboxID, void *message, int message_size)
 {
+    check_kernel_mode("MboxCondSend");
+    disable_interrupts("MboxCondSend");
+
+    enable_interrupts("MboxCondSend");
     return 0;
 } /* MboxCondSend */
 
@@ -328,6 +398,10 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
    ----------------------------------------------------------------------- */
 int MboxCondReceive(int mailboxID, void *message, int max_message_size)
 {
+    check_kernel_mode("MboxCondReceive");
+    disable_interrupts("MboxCondReceive");
+
+    enable_interrupts("MboxCondReceive");
     return 0;
 } /* MboxCondReveive */
 
@@ -344,6 +418,10 @@ int MboxCondReceive(int mailboxID, void *message, int max_message_size)
    ----------------------------------------------------------------------- */
 int waitdevice(int type, int unit, int *status)
 {
+    check_kernel_mode("waitdevice");
+    disable_interrupts("waitdevice");
+
+    enable_interrupts("waitdevice");
     //Called when a process wants to receive results of i/o operations
     //Applicable to Test 13 and test14
 
