@@ -1,15 +1,14 @@
 /* ------------------------------------------------------------------------
    phase2.c
-
    University of Arizona South
    Computer Science 452
-
    ------------------------------------------------------------------------ */
 
 #include <phase1.h>
 #include <phase2.h>
 #include <usloss.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "message.h"
 
@@ -18,24 +17,32 @@ int start1 (char *);
 extern int start2 (char *);
 
 int MboxCreate(int slots, int slot_size);
+int SlotCreate(void *msg_ptr, int msg_size);
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size);
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size);
 int MboxRelease(int mailboxID);
 int MboxCondSend(int mailboxID, void *message, int message_size);
 int MboxCondReceive(int mailboxID, void *message, int max_message_size);
 int waitdevice(int type, int unit, int *status);
-int getInactive(void);
+int getInactive();
+
+static void check_kernel_mode(char *caller_name);
+static void enable_interrupts(char *caller_name);
+static void disable_interrupts(char *caller_name);
+
 
 /* -------------------------- Globals ------------------------------------- */
 
 int debugflag2 = 0;
 int numMailboxes = 0;
+int next_slot_id = 0;
+int num_slots = 0;
 
 /* the mail boxes */
 mail_box MailBoxTable[MAXMBOX];
-//slot_ptr Mail_Slots[] Not sure what to do here, but I know it's needed...
-//TODO: Define a new Process Table
-
+mail_slot Mail_Slots[MAXSLOTS];
+//Define a new Process Table
+proc_struct ProcTable[MAXPROC];
 
 /* -------------------------- Functions ----------------------------------- */
 
@@ -58,20 +65,41 @@ int start1(char *arg)
    check_kernel_mode("start1");
 
    /* Disable interrupts */
-   disableInterrupts();
+   disable_interrupts("start1");
 
    /* Initialize the mail box table, slots, & other data structures.
     * Initialize int_vec and sys_vec, allocate mailboxes for interrupt
     * handlers.  Etc... */
+
+    //Initialize mailboxes
    for(int i = 0; i <= MAXMBOX; i++)
    {
       MailBoxTable[i].mbox_id = i;
       MailBoxTable[i].status = INACTIVE;
+      MailBoxTable[i].num_slots = -1;
    }
-   //TODO: Initialze mail_slots table
-   //TODO: Initialize new process table
+   //Initialze mail_slots table
+   for(int i = 0; i < MAXSLOTS; i++)
+   {
+       Mail_Slots[i].mbox_id = -1;
+       Mail_Slots[i].slot_id = -1;
+       Mail_Slots[i].status = EMPTY;
+       Mail_Slots[i].next_slot = NULL;
+   }
+
+   /* initialize the Process Table */
+   for (int i = 1; i <= MAXPROC; i++)
+   {
+      ProcTable[i].pid = UNUSED;
+      ProcTable[i].status = UNUSED;
+      ProcTable[i].next_proc_ptr = NULL;
+      ProcTable[i].child_proc_ptr = NULL;
+      ProcTable[i].next_sibling_ptr = NULL;
+  }
    //TODO: initialize int_vec
    //TODO: initialize sys_vec
+
+   //Interrupt mailboxes.
    int IntHandMB[7];
 
    IntHandMB[CLOCKMB] = MboxCreate(0, sizeof(int)); //Clock MB
@@ -83,7 +111,7 @@ int start1(char *arg)
    IntHandMB[DISKMB + 1] = MboxCreate(0, sizeof(int)); //Disk 2
 
 
-   enableInterrupts();
+   enable_interrupts("start1");
 
    /* Create a process for start2, then block on a join until start2 quits */
    if (DEBUG2 && debugflag2)
@@ -108,9 +136,10 @@ int start1(char *arg)
    ----------------------------------------------------------------------- */
 int MboxCreate(int slots, int slot_size)
 {
-   disableInterrupts();
+
    check_kernel_mode("MboxCreate");
-   int next_Available = getinactive();
+   disable_interrupts("MboxCreate");
+   int next_Available = getInactive();
 
    if(next_Available == -1)
    {
@@ -126,17 +155,38 @@ int MboxCreate(int slots, int slot_size)
    nBox->num_slots = slots;
    nBox->slot_size = slot_size;
    nBox->status = ACTIVE;
+   nBox->blocked = -1;
 
    if(DEBUG2 && debugflag2)
    {
       console("Created mailbox with id %d, total slots = %d, slot size = %d\n",
       nBox->mbox_id, nBox->num_slots,nBox->slot_size);
    }
-   enableInterrupts();
+   enable_interrupts("MboxCreate");
    return nBox->mbox_id;
 } /* MboxCreate */
 
+int SlotCreate(void *msg_ptr, int msg_size)
+{
+    check_kernel_mode("SlotCreate");
+    disable_interrupts("SlotCreate");
 
+    slot_ptr slot = &Mail_Slots[next_slot_id];
+    slot->slot_id = next_slot_id++;
+    slot->status = USED;
+    slot->message_size = msg_size;
+    num_slots++;
+
+    memcpy(slot->message, msg_ptr, msg_size);
+
+    if(DEBUG2 && debugflag2)
+        console("SlotCreate(): Created new slot with slot ID: %d \n", slot->slot_id);
+    enable_interrupts("SlotCreate");
+
+    //console("Slot ID: %d\n", slot->slot_id);
+    return slot->slot_id;
+
+} /* SlotCreate */
 /* ------------------------------------------------------------------------
    Name - MboxSend
    Purpose - Put a message into a slot for the indicated mailbox.
@@ -147,35 +197,94 @@ int MboxCreate(int slots, int slot_size)
    ----------------------------------------------------------------------- */
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 {
-    disableInterrupts();
-    int mbStatus = MailBoxTable[mbox_id].status;
+    check_kernel_mode("MboxSend");
+    disable_interrupts("MboxSend");
+    mail_box *mbox = &(MailBoxTable[mbox_id]);
+
     if(DEBUG2 && debugflag2)
-        console("MboxSend(): Checking for possible errors...");
+        console("MboxSend(): Checking for possible errors...\n");
     //Check for possible errors
-    if(mbStatus == INACTIVE)
+
+    if(mbox_id < 0 || mbox_id >= MAXMBOX)
     {
-        //Some error message
+        if(DEBUG2 && debugflag2)
+            console("MboxSend(): Invalid Mailbox ID, Returning...\n");
+        enable_interrupts("MboxSend");
         return -1;
     }
-    if(msg_size > max_message_size)
+    if(MailBoxTable[mbox_id].status == INACTIVE)
+    {
+        //Some error message
+        enable_interrupts("MboxSend");
+        return -1;
+    }
+    if(msg_size > MAX_MESSAGE)
     {
         //some error message
+        enable_interrupts("MboxSend");
+        return -1;
+    }
+    mail_box *nBox = &MailBoxTable[mbox_id];
+
+    if(nBox->status == INACTIVE || msg_size < 0 || msg_size > nBox->slot_size)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxSend(): Invalid argument(s). Returning...\n");
+        enable_interrupts("MboxSend");
         return -1;
     }
 
     //If slot is available in this mailbox, allocate a slot from the mail_slot
     //table
-    //TODO: This crap
+    /*if(MailBoxTable[mbox_id].num_slots == 0)
+    {
+        if(DEBUG2 && debugflag2)
+        {
+            console("MboxSend(): Zero slot mailbox. Returning...\n");
+        }
+        enable_interrupts("MboxSend");
+        return -1;
+    }*/
+
     //If the Mail slot overflows, halt usloss
     //TODO: This crap
+    if(num_slots == MAXSLOTS)
+    {
+        //check for conditional send
+        if(DEBUG2 && debugflag2)
+        {
+            console("MboxSend(): Mailslot has overflowed. Halting...\n");
+        }
+        halt(1);
+    }
 
     //Copy message into allocated slot (use memcpy or strcpy)
-    //TODO: This crap
+
+    int nSlot_id = SlotCreate(msg_ptr, msg_size);
+    slot_ptr slot = &Mail_Slots[nSlot_id];
+    //Add slot to mailbox
+    if(mbox->head == NULL)
+    {
+        mbox->head = slot;
+    }
+    else
+    {
+        mbox->end->next_slot = slot;
+    }
+    mbox->end = slot;
+
+    num_slots++;
+
+    //Unblocks reciever if blocked while waiting for message
+    if (nBox->blocked != -1)
+    {
+        unblock_proc(nBox->blocked);
+    }
 
     //Block sender if mailbox has no available slots.
     //TODO: This crap
 
-    enableInterrupts();
+    enable_interrupts("MboxSend");
     return 0;
 
 } /* MboxSend */
@@ -192,27 +301,43 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
    ----------------------------------------------------------------------- */
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 {
-    disableInterrupts();
-    int mbStatus = MailBoxTable[mbox_id].status;
 
-    if(mbStatus == INACTIVE)
+    check_kernel_mode("mBoxReceive");
+    disable_interrupts("MboxReceive");
+
+    int size;
+    mail_box *mbox = &(MailBoxTable[mbox_id]);
+
+    //MailBox is inactive
+    if(MailBoxTable[mbox_id].status == INACTIVE)
     {
         //Some error message
         return -1;
     }
 
+    //Block the receiver if there are not messages in the mailbox
+    //TODO: This crap
+    if (mbox->head == NULL)
+    {
+        mbox->blocked = getpid()%MAXPROC;
+        block_me(11);
+    }
+
     //If one (or more) messages are available in the mailbox, memcpy the
     //message from the slot to the receiver's buffer
     //TODO: This crap
+    size = mbox->head->message_size;
+
+    memcpy(msg_ptr, mbox->head->message, msg_size);
 
     //Free the mailbox slot
-    //TODO: This crap
+    Mail_Slots[mbox_id].mbox_id = -1;
+    Mail_Slots[mbox_id].status = EMPTY;
+    Mail_Slots[mbox_id].slot_id = -1;
+    num_slots--;
 
-    //Block the receiver if there are not messages in the mailbox
-    //TODO: This crap
-
-    enableInterrupts();
-    return msg_size;
+    enable_interrupts("MboxReceive");
+    return size;
 } /* MboxReceive */
 
 
@@ -229,6 +354,46 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 
 int MboxRelease(int mailboxID)
 {
+    check_kernel_mode("MboxRelease");
+    disable_interrupts("MboxRelease");
+
+    mail_box *mbox = &(MailBoxTable[mailboxID]);
+
+    if(mailboxID < 0 || mailboxID >= MAXMBOX)
+    {
+        if(DEBUG2 && debugflag2)
+        {
+            console("MboxRelease(): Invalid mailboxID. Returning -1", mailboxID);
+        }
+        return -1;
+    }
+
+    MailBoxTable[mailboxID].mbox_id = -1;
+    slot_ptr t = NULL;
+    slot_ptr slot = mbox->head;
+
+    while(slot != NULL)
+    {
+        slot->mbox_id = -1;
+        slot->status = UNUSED;
+        slot->message[0] = '\0';
+        slot->message_size = -1;
+
+        if(t != NULL)
+        {
+            t->next_slot = NULL;
+        }
+    }
+
+    MailBoxTable[mailboxID].mbox_id = -1;
+    MailBoxTable[mailboxID].status = INACTIVE;
+    MailBoxTable[mailboxID].num_slots = -1;
+    MailBoxTable[mailboxID].slot_size = -1;
+    MailBoxTable[mailboxID].head = NULL;
+    MailBoxTable[mailboxID].end = NULL;
+
+    enable_interrupts("MboxRelease");
+    return 0;
 } /* MboxRelease */
 
 
@@ -247,6 +412,11 @@ int MboxRelease(int mailboxID)
    ----------------------------------------------------------------------- */
 int MboxCondSend(int mailboxID, void *message, int message_size)
 {
+    check_kernel_mode("MboxCondSend");
+    disable_interrupts("MboxCondSend");
+
+    enable_interrupts("MboxCondSend");
+    return 0;
 } /* MboxCondSend */
 
 
@@ -266,6 +436,11 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
    ----------------------------------------------------------------------- */
 int MboxCondReceive(int mailboxID, void *message, int max_message_size)
 {
+    check_kernel_mode("MboxCondReceive");
+    disable_interrupts("MboxCondReceive");
+
+    enable_interrupts("MboxCondReceive");
+    return 0;
 } /* MboxCondReveive */
 
 
@@ -281,10 +456,15 @@ int MboxCondReceive(int mailboxID, void *message, int max_message_size)
    ----------------------------------------------------------------------- */
 int waitdevice(int type, int unit, int *status)
 {
+    check_kernel_mode("waitdevice");
+    disable_interrupts("waitdevice");
+
+    enable_interrupts("waitdevice");
     //Called when a process wants to receive results of i/o operations
     //Applicable to Test 13 and test14
 
     //use MboxReceive on the appropriate mailbox.
+    return 0;
 } /* waitdevice */
 
 
@@ -300,3 +480,58 @@ int getInactive()
    }
    return -1;
 }
+/*----------------------------------------------------------------*
+ * Name        : check_kernel_mode                                *
+ * Purpose     : Checks the current kernel mode.                  *
+ * Parameters  : name of calling function                         *
+ * Returns     : nothing                                          *
+ * Side Effects: halts process if in user mode                    *
+ *----------------------------------------------------------------*/
+static void check_kernel_mode(char *caller_name)
+{
+   union psr_values caller_psr;                                     /* holds the current psr values */
+   if (DEBUG2 && debugflag2)
+      console("    - check_kernel_mode(): called for function %s -\n", caller_name);
+
+ /* checks if in kernel mode, halts otherwise */
+   caller_psr.integer_part = psr_get();                             /* stores current psr values into structure */
+   if (caller_psr.bits.cur_mode != 1)
+   {
+      console("       - %s(): called while not in kernel mode, by process. Halting... -\n", caller_name);
+      halt(1);
+   }
+}/* check_kernel_mode */
+
+
+
+/*----------------------------------------------------------------*
+ * Name        : disable_interrupts                               *
+ * Purpose     : Disables all interupts.                          *
+ * Parameters  : name of calling function                         *
+ * Returns     : nothing                                          *
+ * Side Effects: disables interupts                               *
+ *----------------------------------------------------------------*/
+void disable_interrupts(char *caller_name)
+{
+   if (DEBUG2 && debugflag2)
+      console("    - disable_interrupts(): interupts turned off for %s -\n", caller_name);
+
+   psr_set( psr_get() & ~PSR_CURRENT_INT );
+}/* disable_interrupts */
+
+
+
+/*----------------------------------------------------------------*
+ * Name        : enable_interrupts                                *
+ * Purpose     : Enables all interupts.                           *
+ * Parameters  : name of calling function                         *
+ * Returns     : nothing                                          *
+ * Side Effects: enables interupts                                *
+ *----------------------------------------------------------------*/
+void enable_interrupts(char *caller_name)
+{
+   if (DEBUG2 && debugflag2)
+      console("    - enable_interrupts(): interupts turned on for %s -\n", caller_name);
+
+   psr_set( psr_get() | PSR_CURRENT_INT );
+}/* enable_interrupts */
