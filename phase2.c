@@ -19,7 +19,7 @@ int start1 (char *);
 extern int start2 (char *);
 
 int MboxCreate(int slots, int slot_size);
-int SlotCreate(void *msg_ptr, int msg_size);
+int SlotCreate(mail_box *mbox, void *msg_ptr, int msg_size);
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size);
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size);
 int MboxRelease(int mailboxID);
@@ -27,6 +27,9 @@ int MboxCondSend(int mailboxID, void *message, int message_size);
 int MboxCondReceive(int mailboxID, void *message, int max_message_size);
 int waitdevice(int type, int unit, int *status);
 int getInactive();
+void block(int mbox_id, int block, int size, char message[], int *realSize);
+int unblock(int mbox_id, int block, int size, char message[], int *realSize);
+int get_slot();
 
 static void check_kernel_mode(char *caller_name);
 static void enable_interrupts(char *caller_name);
@@ -90,13 +93,14 @@ int start1(char *arg)
    }
 
    /* initialize the Process Table */
-   for (int i = 1; i <= MAXPROC; i++)
+   for (int i = 0; i <= MAXPROC; i++)
    {
-      ProcTable[i].pid = UNUSED;
-      ProcTable[i].status = UNUSED;
-      ProcTable[i].next_proc_ptr = NULL;
-      ProcTable[i].child_proc_ptr = NULL;
-      ProcTable[i].next_sibling_ptr = NULL;
+       ProcTable[i].pid = -1;
+       ProcTable[i].status = -1;
+       ProcTable[i].message[0] = '\0';
+       ProcTable[i].size = -1;
+       ProcTable[i].mbox_id = -1;
+       ProcTable[i].cur_startTime = -1;
   }
    //TODO: initialize int_vec
    //TODO: initialize sys_vec
@@ -167,27 +171,43 @@ int MboxCreate(int slots, int slot_size)
    return nBox->mbox_id;
 } /* MboxCreate */
 
-int SlotCreate(void *msg_ptr, int msg_size)
+int SlotCreate(mail_box *mbox, void *msg_ptr, int msg_size)
 {
-    check_kernel_mode("SlotCreate");
-    disable_interrupts("SlotCreate");
+    int slot_id = get_slot();
 
-    slot_ptr slot = &Mail_Slots[next_slot_id];
+    if(slot_id == -1)
+    {
+        return -1;
+    }
+
+    slot_ptr slot = &Mail_Slots[slot_id];
+
+    if(mbox->head == NULL)
+    {
+        mbox->head = slot;
+    }
+    else
+    {
+        mbox->end->next_slot = slot;
+    }
+    mbox->end = slot;
+
     slot->slot_id = next_slot_id++;
     slot->status = USED;
+    memcpy(slot->message, msg_ptr, msg_size);
     slot->message_size = msg_size;
     num_slots++;
 
-    memcpy(slot->message, msg_ptr, msg_size);
+    mbox->slots_used++;
 
     if(DEBUG2 && debugflag2)
         console("SlotCreate(): Created new slot with slot ID: %d \n", slot->slot_id);
     enable_interrupts("SlotCreate");
 
-    console("Slot ID: %d\n", slot->slot_id);
-    return slot->slot_id;
+    return 0;
 
 } /* SlotCreate */
+
 /* ------------------------------------------------------------------------
    Name - MboxSend
    Purpose - Put a message into a slot for the indicated mailbox.
@@ -237,7 +257,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
     //If slot is available in this mailbox, allocate a slot from the mail_slot
     //table
-    /*if(MailBoxTable[mbox_id].num_slots == 0)
+    if(MailBoxTable[mbox_id].num_slots == 0)
     {
         if(DEBUG2 && debugflag2)
         {
@@ -245,7 +265,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         }
         enable_interrupts("MboxSend");
         return -1;
-    }*/
+    }
 
     //If the Mail slot overflows, halt usloss
     //TODO: This crap
@@ -261,21 +281,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
     //Copy message into allocated slot (use memcpy or strcpy)
 
-    int nSlot_id = SlotCreate(msg_ptr, msg_size);
-    slot_ptr slot = &Mail_Slots[nSlot_id];
-    //Add slot to mailbox
-    if(mbox->head == NULL)
-    {
-        mbox->head = slot;
-    }
-    else
-    {
-        mbox->end->next_slot = slot;
-    }
-    mbox->end = slot;
-
-    num_slots++;
-
+    int nSlot_id = SlotCreate(mbox, msg_ptr, msg_size);
     //Block sender if mailbox has no available slots.
     //TODO: This crap
 
@@ -297,15 +303,47 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 {
 
-    check_kernel_mode("mBoxReceive");
+    check_kernel_mode("MboxReceive");
     disable_interrupts("MboxReceive");
 
     mail_box *mbox = &(MailBoxTable[mbox_id]);
 
     //MailBox is inactive
-    if(MailBoxTable[mbox_id].status == INACTIVE)
+    if(mbox->status == INACTIVE)
     {
-        //Some error message
+        if(DEBUG2 && debugflag2)
+            console("MboxReceive(): Mailbox is Inactive. Returning...\n");
+        enable_interrupts("MboxReceive");
+        return -1;
+    }
+    if(msg_size > MAX_MESSAGE) //Should be caught in send, but just making sure.
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxReceive(): Message size to large. Returning...\n");
+        enable_interrupts("MboxReceive");
+        return -1;
+    }
+    if(mbox->mbox_id == -1)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxReceive(): Mailbox does not exist. Returning...\n");
+        enable_interrupts("MboxReceive");
+        return -1;
+    }
+    if(mbox->num_slots == 0)
+    {
+        //some stuff to deal with zero slot mailboxes
+    }
+    if(mbox->slots_used == 0)
+    {
+        //Block the receiver if there are not messages in the mailbox
+        //TODO: This crap
+    }
+    if(mbox->head->message_size > msg_size)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxReceive(): Message size indicated too small. Returning...\n");
+        enable_interrupts("MboxReceive");
         return -1;
     }
 
@@ -321,9 +359,6 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     Mail_Slots[mbox_id].status = EMPTY;
     Mail_Slots[mbox_id].slot_id = -1;
     num_slots--;
-
-    //Block the receiver if there are not messages in the mailbox
-    //TODO: This crap
 
     enable_interrupts("MboxReceive");
     return size;
@@ -356,6 +391,7 @@ int MboxRelease(int mailboxID)
         }
         return -1;
     }
+
 
     MailBoxTable[mailboxID].mbox_id = -1;
     slot_ptr t = NULL;
@@ -403,6 +439,97 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
 {
     check_kernel_mode("MboxCondSend");
     disable_interrupts("MboxCondSend");
+
+
+    mail_box *mbox = &(MailBoxTable[mailboxID]);
+
+    if(DEBUG2 && debugflag2)
+        console("MboxCondSend(): Checking for invalid arguments...\n");
+    if(mbox->mbox_id == -1)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxCondSend(): Mail box is not in use. Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -1;
+    }
+    if(message_size > MAX_MESSAGE)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxCondSend: Message size larger than max size. Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -1;
+    }
+    else if (message_size > mbox->slot_size)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxCondSend(): Message size to big for slot. Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -1;
+    }
+    if(mbox->num_slots == 0)
+    {
+        //check if anyone is waiting for this mailbox.
+        //if no one is waiting, return -2
+        if(!unblock(mbox->mbox_id, RECEIVEBLOCK, message_size, message, NULL))
+        {
+            if(DEBUG2 && debugflag2)
+                console("MboxSend(): No one waiting for mailbox. Returning...\n");
+            enable_interrupts("MboxCondSend");
+            return -2;
+        }
+
+        if(is_zapped())
+        {
+            enable_interrupts("MboxCondSend");
+            return -3;
+        }
+        if(mbox->mbox_id == -1)
+        {
+            enable_interrupts("MboxCondSend");
+            return -3;
+        }
+
+        enable_interrupts("MboxCondSend");
+        return 0;
+    }
+
+    if(mbox->num_slots == mbox->slots_used)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxCondSend(): All mail slots in this mailbox are used. Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -2;
+    }
+
+    int nSlot_id = SlotCreate(mbox, message, message_size);
+    if(nSlot_id == -1)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxCondSend(): Unable to create mail slot. Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -2;
+    }
+    slot_ptr slot = &Mail_Slots[nSlot_id];
+    //Add slot to mailbox
+    if(mbox->head == NULL)
+    {
+        mbox->head = slot;
+    }
+    else
+    {
+        mbox->end->next_slot = slot;
+    }
+    mbox->end = slot;
+
+    num_slots++;
+
+    if(is_zapped())
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxCondSend(): Process was zapped on creation of mail slot. Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -3;
+    }
 
     enable_interrupts("MboxCondSend");
     return 0;
@@ -468,6 +595,122 @@ int getInactive()
       }
    }
    return -1;
+}
+
+void block(int mbox_id, int block, int size, char message[], int *realSize)
+{
+    //initialize process table stuff
+    proc_struct *proc = &ProcTable[getpid() % 50];
+
+    proc->pid = getpid();
+    proc->status = block;
+    proc->mbox_id = mbox_id;
+    proc->cur_startTime = sys_clock();
+    proc->size = size;
+
+    if(message != NULL && block == SENDBLOCK)
+    {
+        memcpy(proc->message, message, size);
+    }
+
+    block_me(block);
+
+    if(message != NULL && block == RECEIVEBLOCK)
+    {
+        memcpy(message, ProcTable[getpid() % 50].message, size);
+        *realSize = ProcTable[getpid() % 50].size;
+    }
+
+    if(block == RECEIVEBLOCK)
+    {
+        //empty slot in proc table
+        ProcTable[getpid() % 50].pid = -1;
+        ProcTable[getpid() % 50].status = -1;
+        ProcTable[getpid() % 50].message[0] = '\0';
+        ProcTable[getpid() % 50].size = -1;
+        ProcTable[getpid() % 50].mbox_id = -1;
+        ProcTable[getpid() % 50].cur_startTime = -1;
+    }
+}
+
+int unblock(int mbox_id, int block, int size, char message[], int *realSize)
+{
+    int unblock_id = -1;
+
+    for(int i = 0; i < MAXPROC; i++)
+    {
+        if(ProcTable[i].mbox_id == mbox_id && ProcTable[i].status == block)
+        {
+            if(unblock_id == -1)
+            {
+                unblock_id = i;
+            }
+            else
+            {
+                if(ProcTable[unblock_id].cur_startTime > ProcTable[i].cur_startTime)
+                {
+                    unblock_id = i;
+                }
+            }
+        }
+    }
+    if(unblock_id != -1)
+    {
+        int pid = ProcTable[unblock_id].pid;
+
+        int val = 1;
+        if(block == RECEIVEBLOCK && size > ProcTable[unblock_id].size)
+        {
+            val++;
+        }
+
+        if(message != NULL && block == SENDBLOCK)
+        {
+            memcpy(message, ProcTable[unblock_id].message, size);
+            ProcTable[unblock_id].size = size;
+        }
+        else if(message != NULL && block == RECEIVEBLOCK)
+        {
+            memcpy(ProcTable[unblock_id].message, message, size);
+            ProcTable[unblock_id].size = size;
+        }
+
+        if(block == SENDBLOCK)
+        {
+            ProcTable[unblock_id].pid = -1;
+            ProcTable[unblock_id].status = -1;
+            ProcTable[unblock_id].message[0] = '\0';
+            ProcTable[unblock_id].size = -1;
+            ProcTable[unblock_id].mbox_id = -1;
+            ProcTable[unblock_id].cur_startTime = -1;
+        }
+        unblock_proc(pid);
+        return val;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+int get_slot()
+{
+    int i;
+
+    for(i =0; i < MAXSLOTS; i++)
+    {
+        if(Mail_Slots[i].status != USED)
+        {
+            break;
+        }
+    }
+
+    if(i == MAXSLOTS)
+    {
+        return -1;
+    }
+
+    return i;
 }
 /*----------------------------------------------------------------*
  * Name        : check_kernel_mode                                *
