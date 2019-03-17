@@ -8,6 +8,9 @@
 #define DISKMB 5
 
 #define UNUSED -1
+#define NOT_BLOCKED 0
+#define SENDBLOCK 11
+#define RECEIVEBLOCK 12
 
 
 typedef struct mail_slot *slot_ptr;
@@ -24,6 +27,7 @@ struct mailbox {
    int           status;
    int           num_slots;
    int           slot_size;
+   int           slots_used;
    slot_ptr      head, end;
 
    /* other items as needed... */
@@ -40,25 +44,14 @@ struct mail_slot {
 };
 
 struct proc_struct {
-   proc_ptr       next_proc_ptr;
-   proc_ptr       child_proc_ptr;
-   proc_ptr       next_sibling_ptr;
-   proc_ptr       parent_pid;
-   char           name[MAXNAME];     /* process's name */
-   char           start_arg[MAXARG]; /* args passed to process */
-   context        state;             /* current context for process */
    short          pid;               /* process id */
-   int            priority;
-   int (* start_func) (char *);   /* function where process begins -- launch */
-   char          *stack;
-   unsigned int   stacksize;
    int            status;         /* READY, BLOCKED, QUIT, etc. */
-   int            num_child;   /* The number of children the process has */
-   //int            return_status;
    int            cur_startTime;
-   int            CPUTime;
-   int            quit_code;
+   int            mbox_id;
+   char           message[MAX_MESSAGE];
+   int            size;
 
+   //TODO: Evaluate what is needed and what isn't
    /* other fields as needed... */
 };
 
