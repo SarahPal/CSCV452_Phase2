@@ -3,14 +3,14 @@
 # Developed on Linux Mint System
 # Test Cases: 
 
-#   Test00: 
+#   Test00: PASS
 
 starting test 00 ....
 
 start2(): started
 All processes completed.
 
-#   Test01: 
+#   Test01: PASS
 starting test 01 ....
 
 start2(): started
@@ -18,7 +18,7 @@ start2(): MailBoxCreate returned id = 7
 start2(): MailBoxCreate returned id = 8
 All processes completed.
 
-#   Test02: 
+#   Test02: PASS
 
 starting test 02 ....
 
@@ -35,7 +35,7 @@ start2(): MailBoxCreate returned id less than zero, id = -1
 start2(): MailBoxCreate returned id less than zero, id = -1
 All processes completed.
 
-#   Test03: 
+#   Test03: PASS
 starting test 03 ....
 
 start2(): started
@@ -46,7 +46,7 @@ start2(): attempting to receive message from mailbox 7
 start2(): after receive of message, result = 12 message is 'hello there'
 All processes completed.
 
-#   Test04: 
+#   Test04: PASS
 
 starting test 04 ....
 
@@ -467,7 +467,7 @@ XXp1(): character received = H
 start2(): joined with kid 4, status = -3
 All processes completed.
 
-#   Test15:
+#   Test15: PASS
 
 starting test 15 ....
 
@@ -478,7 +478,7 @@ start2(): after send of message, result = -1
 message too big
 All processes completed.
 
-#   Test16:
+#   Test16: PASS
 
 starting test 16 ....
 
@@ -700,7 +700,7 @@ XXp3(): join'd with child 5 whose status is -4
 start2(): joined with kid 4, status = -5
 All processes completed.
 
-#   Test25:
+#   Test25: PASS
 
 starting test 25 ....
 
@@ -940,7 +940,7 @@ start2(): joined with kid 7, status = -3
 
 All processes completed.
 
-#   Test33:
+#   Test33: PASS
 
 starting test 33 ....
 
@@ -953,7 +953,7 @@ start2(): after receive of message, result = 12
           message is 'hello there'
 All processes completed.
 
-#   Test34:
+#   Test34: PASS
 
 starting test 34 ....
 
@@ -973,7 +973,7 @@ start2(): MailBoxCreate returned id = -1
 start2(): passed...
 start2(): started, creating with slot_size -1
 start2(): MailBoxCreate returned id = -1
-start2(): passed...
+start2(): passed...MboxCondReceive
 start2(): started, creating with slot_num -1
 start2(): MailBoxCreate returned id = -1
 start2(): passed...
@@ -1019,7 +1019,7 @@ start2(): putting itself into user mode
 start2(): calling usyscall executing syscall 0, this should halt
 syscall_handler(): sys number 50 is wrong.  Halting...
 
-#   Test39:
+#   Test39: PASS
 
 starting test 39 ....
 
