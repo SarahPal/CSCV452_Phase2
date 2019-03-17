@@ -303,10 +303,10 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     check_kernel_mode("mBoxReceive");
     disable_interrupts("MboxReceive");
 
-    int mbStatus = MailBoxTable[mbox_id].status;
+    mail_box *mbox = &(MailBoxTable[mbox_id]);
 
     //MailBox is inactive
-    if(mbStatus == INACTIVE)
+    if(MailBoxTable[mbox_id].status == INACTIVE)
     {
         //Some error message
         return -1;
@@ -315,17 +315,21 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     //If one (or more) messages are available in the mailbox, memcpy the
     //message from the slot to the receiver's buffer
     //TODO: This crap
+    int size = mbox->head->message_size;
+
+    memcpy(msg_ptr, mbox->head->message, msg_size);
 
     //Free the mailbox slot
     Mail_Slots[mbox_id].mbox_id = -1;
     Mail_Slots[mbox_id].status = EMPTY;
     Mail_Slots[mbox_id].slot_id = -1;
+    num_slots--;
 
     //Block the receiver if there are not messages in the mailbox
     //TODO: This crap
 
     enable_interrupts("MboxReceive");
-    return msg_size;
+    return size;
 } /* MboxReceive */
 
 
