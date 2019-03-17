@@ -184,6 +184,7 @@ int SlotCreate(void *msg_ptr, int msg_size)
         console("SlotCreate(): Created new slot with slot ID: %d \n", slot->slot_id);
     enable_interrupts("SlotCreate");
 
+    console("Slot ID: %d\n", slot->slot_id);
     return slot->slot_id;
 
 } /* SlotCreate */
@@ -261,18 +262,14 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     //Copy message into allocated slot (use memcpy or strcpy)
 
     int nSlot_id = SlotCreate(msg_ptr, msg_size);
-    console("Creating slot\n");
     slot_ptr slot = &Mail_Slots[nSlot_id];
     //Add slot to mailbox
-    console("Adding slot to mailbox...\n");
     if(mbox->head == NULL)
     {
-        console("Adding slot as head\n");
         mbox->head = slot;
     }
     else
     {
-        console("Adding slot as next slot\n");
         mbox->end->next_slot = slot;
     }
     mbox->end = slot;
@@ -349,6 +346,8 @@ int MboxRelease(int mailboxID)
     check_kernel_mode("MboxRelease");
     disable_interrupts("MboxRelease");
 
+    mail_box *mbox = &(MailBoxTable[mailboxID]);
+
     if(mailboxID < 0 || mailboxID >= MAXMBOX)
     {
         if(DEBUG2 && debugflag2)
@@ -357,6 +356,30 @@ int MboxRelease(int mailboxID)
         }
         return -1;
     }
+
+    MailBoxTable[mailboxID].mbox_id = -1;
+    slot_ptr t = NULL;
+    slot_ptr slot = mbox->head;
+
+    while(slot != NULL)
+    {
+        slot->mbox_id = -1;
+        slot->status = UNUSED;
+        slot->message[0] = '\0';
+        slot->message_size = -1;
+
+        if(t != NULL)
+        {
+            t->next_slot = NULL;
+        }
+    }
+
+    MailBoxTable[mailboxID].mbox_id = -1;
+    MailBoxTable[mailboxID].status = INACTIVE;
+    MailBoxTable[mailboxID].num_slots = -1;
+    MailBoxTable[mailboxID].slot_size = -1;
+    MailBoxTable[mailboxID].head = NULL;
+    MailBoxTable[mailboxID].end = NULL;
 
     enable_interrupts("MboxRelease");
     return 0;
