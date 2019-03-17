@@ -187,6 +187,8 @@ int SlotCreate(void *msg_ptr, int msg_size)
     return slot->slot_id;
 
 } /* SlotCreate */
+
+
 /* ------------------------------------------------------------------------
    Name - MboxSend
    Purpose - Put a message into a slot for the indicated mailbox.
@@ -331,6 +333,11 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     memcpy(msg_ptr, mbox->head->message, msg_size);
 
     //Free the mailbox slot
+    slot_ptr temp = mbox->head;
+    mbox->head = mbox->head->next_slot;
+    //free(temp);
+
+    //Update Mail_Slot structure
     Mail_Slots[mbox_id].mbox_id = -1;
     Mail_Slots[mbox_id].status = EMPTY;
     Mail_Slots[mbox_id].slot_id = -1;
