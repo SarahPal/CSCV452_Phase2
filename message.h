@@ -24,14 +24,16 @@ struct mailbox {
    int           status;
    int           num_slots;
    int           slot_size;
+   slot_ptr      head, end;
+
    /* other items as needed... */
 };
 
 struct mail_slot {
+   slot_ptr  next_slot;
    int       mbox_id;
    int       slot_id;
    int       status;
-   slot_ptr  next_slot;
    char      message[MAX_MESSAGE];
    int       message_size;
    /* other items as needed... */
