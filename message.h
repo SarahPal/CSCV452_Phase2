@@ -7,10 +7,11 @@
 #define TERMMB 1
 #define DISKMB 5
 
+#define TRUE 1
+#define FALSE 0
 #define UNUSED -1
-#define NOT_BLOCKED 0
-#define SENDBLOCK 11
-#define RECEIVEBLOCK 12
+#define SEND_BLOCK 11
+#define RECEIVE_BLOCK 12
 
 
 typedef struct mail_slot *slot_ptr;
@@ -26,9 +27,10 @@ struct mailbox {
    int           mbox_id;
    int           status;
    int           num_slots;
+   int           used_slots;
    int           slot_size;
-   int           slots_used;
    slot_ptr      head, end;
+   int           blocking;
 
    /* other items as needed... */
 };
@@ -44,15 +46,11 @@ struct mail_slot {
 };
 
 struct proc_struct {
-   short          pid;               /* process id */
+   proc_ptr       next_proc_ptr;
    int            status;         /* READY, BLOCKED, QUIT, etc. */
+   int            ishead;
+   int            pid;
    int            cur_startTime;
-   int            mbox_id;
-   char           message[MAX_MESSAGE];
-   int            size;
-
-   //TODO: Evaluate what is needed and what isn't
-   /* other fields as needed... */
 };
 
 struct psr_bits {
