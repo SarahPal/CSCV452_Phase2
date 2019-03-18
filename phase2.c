@@ -255,7 +255,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
   //Checks if there are no unused slots in the mailbox. Increments the count
   // if there are, otherwise blocks current process
-    if (mbox->used_slots < mbox->num_slots)
+    if (mbox->used_slots <= mbox->num_slots)
         mbox->used_slots += 1;
 
     else
@@ -278,7 +278,6 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         block_me(SEND_BLOCK);
         mbox->used_slots += 1;
     }
-
 
   //Checks if the mailbox was closed during block
     if (mbox->mbox_id == -1)
@@ -362,7 +361,7 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
 
   //Block the receiver if there are not messages in the mailbox
     if (mbox->used_slots > 0)
-        mbox->used_slots += 1;
+        mbox->used_slots -= 1;
 
     else
     {
@@ -385,10 +384,8 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
         mbox->used_slots += 1;
     }
 
-
   //If one (or more) messages are available in the mailbox, memcpy the
   //message from the slot to the receiver's buffer
-  //TODO: This crap
     size = mbox->head->message_size;
 
     memcpy(msg_ptr, mbox->head->message, msg_size);
