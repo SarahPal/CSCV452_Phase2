@@ -31,6 +31,12 @@ void block(int mbox_id, int block, int size, char message[], int *realSize);
 int unblock(int mbox_id, int block, int size, char message[], int *realSize);
 int get_slot();
 
+static void nullsys(sysargs *args);
+static void clockHandler(int dev, void *args);
+static void diskHandler(int dev, void *args);
+static void terminalHandler(int dev, void *args);
+static void syscallHandler(int dec, void *args);
+
 static void check_kernel_mode(char *caller_name);
 static void enable_interrupts(char *caller_name);
 static void disable_interrupts(char *caller_name);
@@ -48,6 +54,7 @@ mail_box MailBoxTable[MAXMBOX];
 mail_slot Mail_Slots[MAXSLOTS];
 //Define a new Process Table
 proc_struct ProcTable[MAXPROC];
+int IntHandMB[7];
 
 /* -------------------------- Functions ----------------------------------- */
 
@@ -106,7 +113,7 @@ int start1(char *arg)
    //TODO: initialize sys_vec
 
    //Interrupt mailboxes.
-   int IntHandMB[7];
+
 
    IntHandMB[CLOCKMB] = MboxCreate(0, sizeof(int)); //Clock MB
    IntHandMB[TERMMB] = MboxCreate(0, sizeof(int)); //Terminal 1
@@ -711,6 +718,96 @@ int get_slot()
     }
 
     return i;
+}
+static void nullsys(sysargs *args) {
+    console("nullsys(): Invalid syscall %d. Halting...\n", args->number);
+    halt(1);
+}
+
+static void clockHandler(int dev, void *args)
+{
+    long unit = (long) args;
+
+    int clock_res;
+
+    if(read_cur_start_time() >= 80000)
+    {
+        time_slice();
+    }
+    ticks++;
+    device_input(dev, unit, &clock_res);
+
+    if(ticks % 5 == 0)
+    {
+        int send_res = MboxCondSend(IntHandMB[CLOCKMB], &clock_res, sizeof(clock_res));
+    }
+
+
+}
+static void diskHandler(int dev, void *args)
+{
+    long unit = (long) args;
+    int disk_res;
+
+    if(dev != DISK_DEV || unit < 0 || unit > DISK_UNITS)
+    {
+        console("diskHandler(): Incorrect values. Halting...\n");
+        halt(1);
+    }
+    if(IntHandMB[unit]== -1)
+    {
+        console("disk Mailbox does not exist. Halting...\n");
+        halt(1);
+    }
+
+    device_input(DISK_DEV, unit, &disk_res);
+    MboxCondSend(IntHandMB[unit], &disk_res, sizeof(disk_res));
+}
+static void terminalHandler(int dev, void *args)
+{
+    long unit = (long) args;
+
+    int term_res;
+    if(dev != TERM_DEV || unit < 0 || unit > TERM_UNITS)
+    {
+        console("terminalHandler(): Invalid Terminal value. Halting...\n");
+        halt(1);
+    }
+
+    if(IntHandMB[unit] == -1)
+    {
+        console("terminalHandler(): Indicated mailbox does not exist. Halting...\n");
+        halt(1);
+    }
+
+    int res = device_input(TERM_DEV, unit, &term_res);
+
+    MboxCondSend(IntHandMB[unit], &term_res, sizeof(term_res));
+    if(res != DEV_OK)
+    {
+        console("terminalHandler(): Device input is not okay. Halting...\n");
+        halt(1);
+    }
+
+}
+static void syscallHandler(int dev, void *args)
+{
+    sysargs *sys_ptr = (sysargs *) args;
+
+    if(dev != SYSCALL_INT)
+    {
+        console("syscallHandler(): Bad Call. Halting...\n");
+        halt(1);
+    }
+    if(sys_ptr->number < 0 || sys_ptr >= MAXSYSCALLS)
+    {
+        console("syscallHandler(): sys number %d is wrong. Halting...\n", sys_ptr->number);
+        halt(1);
+    }
+
+    psr_set(psr_get() | PSR_CURRENT_INT);
+    sys_vec[sys_ptr->number](sys_ptr);
+
 }
 /*----------------------------------------------------------------*
  * Name        : check_kernel_mode                                *
