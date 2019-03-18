@@ -73,14 +73,14 @@ int start1(char *arg)
     * Initialize int_vec and sys_vec, allocate mailboxes for interrupt
     * handlers.  Etc... */
 
-    //Initialize mailboxes
+  //Initialize mailboxes
     for(int i = 0; i <= MAXMBOX; i++)
     {
        MailBoxTable[i].mbox_id = i;
        MailBoxTable[i].status = INACTIVE;
        MailBoxTable[i].num_slots = -1;
     }
-    //Initialze mail_slots table
+  //Initialze mail_slots table
     for(int i = 0; i < MAXSLOTS; i++)
     {
         Mail_Slots[i].mbox_id = -1;
@@ -95,10 +95,10 @@ int start1(char *arg)
        ProcTable[i].status = UNUSED;
        ProcTable[i].next_proc_ptr = NULL;
     }
-    //TODO: initialize int_vec
-    //TODO: initialize sys_vec
+  //TODO: initialize int_vec
+  //TODO: initialize sys_vec
 
-    //Interrupt mailboxes.
+  //Interrupt mailboxes.
     int IntHandMB[7];
 
     IntHandMB[CLOCKMB] = MboxCreate(0, sizeof(int)); //Clock MB
@@ -183,7 +183,7 @@ int SlotCreate(void *msg_ptr, int msg_size)
         console("SlotCreate(): Created new slot with slot ID: %d \n", slot->slot_id);
     enable_interrupts("SlotCreate");
 
-    //console("Slot ID: %d\n", slot->slot_id);
+  //console("Slot ID: %d\n", slot->slot_id);
     return slot->slot_id;
 
 } /* SlotCreate */
@@ -205,7 +205,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
     if(DEBUG2 && debugflag2)
         console("MboxSend(): Checking for possible errors...\n");
-    //Check for possible errors
+  //Check for possible errors
 
     if(mbox_id < 0 || mbox_id >= MAXMBOX)
     {
@@ -216,13 +216,13 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     }
     if(MailBoxTable[mbox_id].status == INACTIVE)
     {
-        //Some error message
+      //Some error message
         enable_interrupts("MboxSend");
         return -1;
     }
     if(msg_size > MAX_MESSAGE)
     {
-        //some error message
+      //some error message
         enable_interrupts("MboxSend");
         return -1;
     }
@@ -236,23 +236,11 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         return -1;
     }
 
-    //If slot is available in this mailbox, allocate a slot from the mail_slot
-    //table
-    /*if(MailBoxTable[mbox_id].num_slots == 0)
-    {
-        if(DEBUG2 && debugflag2)
-        {
-             console("MboxSend(): Zero slot mailbox. Returning...\n");
-        }
-        enable_interrupts("MboxSend");
-        return -1;
-    }*/
-
-    //If the Mail slot overflows, halt usloss
-    //TODO: This crap
+  //If the Mail slot overflows, halt usloss
+  //TODO: This crap
     if(num_slots == MAXSLOTS)
     {
-        //check for conditional send
+      //check for conditional send
         if(DEBUG2 && debugflag2)
         {
              console("MboxSend(): Mailslot has overflowed. Halting...\n");
@@ -260,8 +248,8 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         halt(1);
     }
 
-    //Checks if there are no unused slots in the mailbox. Increments the count
-    // if there are, otherwise blocks current process
+  //Checks if there are no unused slots in the mailbox. Increments the count
+  // if there are, otherwise blocks current process
     if (mbox->used_slots < mbox->num_slots)
         mbox->used_slots += 1;
 
@@ -286,24 +274,30 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         mbox->used_slots += 1;
     }
 
-    //Copy message into allocated slot (use memcpy or strcpy)
 
+  //Checks if the mailbox was closed during block
+    if (mbox->mbox_id == -1)
+    {
+        enable_interrupts("MboxSend");
+        return -3;
+    }
+
+
+  //Copy message into allocated slot (use memcpy or strcpy)
     int nSlot_id = SlotCreate(msg_ptr, msg_size);
     slot_ptr slot = &Mail_Slots[nSlot_id];
-    //Add slot to mailbox
-    if(mbox->head == NULL)
-    {
-        mbox->head = slot;
-    }
-    else
-    {
-        mbox->end->next_slot = slot;
-    }
-    mbox->end = slot;
 
+  //Add slot to mailbox
+    if (mbox->head == NULL)
+        mbox->head = slot;
+
+    else
+        mbox->end->next_slot = slot;
+
+    mbox->end = slot;
     num_slots++;
 
-    //Unblocks reciever if blocked while waiting for message
+  //Unblocks reciever if blocked while waiting for message
     if (nBox->blocking != -1)
     {
         int Found = FALSE;
@@ -331,8 +325,8 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
         }
     }
 
-    //Block sender if mailbox has no available slots.
-    //TODO: This crap
+  //Block sender if mailbox has no available slots.
+  //TODO: This crap
 
     enable_interrupts("MboxSend");
     return 0;
@@ -358,16 +352,16 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     int size;
     mail_box *mbox = &(MailBoxTable[mbox_id]);
 
-    //MailBox is inactive
+  //MailBox is inactive
     if(MailBoxTable[mbox_id].status == INACTIVE)
     {
-        //Some error message
+      //Some error message
         return -1;
     }
 
-    //Block the receiver if there are not messages in the mailbox
+  //Block the receiver if there are not messages in the mailbox
     if (mbox->used_slots > 0)
-        mbox->used_slots -= 1;
+        mbox->used_slots += 1;
 
     else
     {
@@ -384,30 +378,31 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
                 temp = temp->next_proc_ptr;
             temp->next_proc_ptr = &ProcTable[getpid()%MAXPROC];
         }
-        ProcTable[mbox->blocking].pid = getpid();
-        ProcTable[mbox->blocking].status = SEND_BLOCK;
-        block_me(SEND_BLOCK);
-        mbox->used_slots -= 1;
+        ProcTable[getpid()%MAXPROC].pid = getpid();
+        ProcTable[getpid()%MAXPROC].status = RECEIVE_BLOCK;
+        block_me(RECEIVE_BLOCK);
+        mbox->used_slots += 1;
     }
 
-    //If one (or more) messages are available in the mailbox, memcpy the
-    //message from the slot to the receiver's buffer
-    //TODO: This crap
+
+  //If one (or more) messages are available in the mailbox, memcpy the
+  //message from the slot to the receiver's buffer
+  //TODO: This crap
     size = mbox->head->message_size;
 
     memcpy(msg_ptr, mbox->head->message, msg_size);
 
-    //Free the mailbox slot
+  //Free the mailbox slot
     slot_ptr temp = mbox->head;
     mbox->head = mbox->head->next_slot;
 
-    //Update Mail_Slot structure
+  //Update Mail_Slot structure
     Mail_Slots[mbox_id].mbox_id = -1;
     Mail_Slots[mbox_id].status = EMPTY;
     Mail_Slots[mbox_id].slot_id = -1;
     num_slots--;
 
-    //Unblocks sender if blocked while waiting to send message
+  //Unblocks sender if blocked while waiting to send message
     if (mbox->blocking != -1)
     {
         int Found = FALSE;
@@ -487,6 +482,13 @@ int MboxRelease(int mailboxID)
     MailBoxTable[mailboxID].head = NULL;
     MailBoxTable[mailboxID].end = NULL;
 
+    proc_ptr temp = &ProcTable[MailBoxTable[mailboxID].blocking];
+    while(temp != NULL)
+    {
+        unblock_proc(temp->pid);
+        temp = temp->next_proc_ptr;
+    }
+
     enable_interrupts("MboxRelease");
     return 0;
 } /* MboxRelease */
@@ -555,10 +557,10 @@ int waitdevice(int type, int unit, int *status)
     disable_interrupts("waitdevice");
 
     enable_interrupts("waitdevice");
-    //Called when a process wants to receive results of i/o operations
-    //Applicable to Test 13 and test14
+  //Called when a process wants to receive results of i/o operations
+  //Applicable to Test 13 and test14
 
-    //use MboxReceive on the appropriate mailbox.
+  //use MboxReceive on the appropriate mailbox.
     return 0;
 } /* waitdevice */
 
