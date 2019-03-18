@@ -205,24 +205,31 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
     if(DEBUG2 && debugflag2)
         console("MboxSend(): Checking for possible errors...\n");
-  //Check for possible errors
 
+  //Check for possible errors
     if(mbox_id < 0 || mbox_id >= MAXMBOX)
     {
         if(DEBUG2 && debugflag2)
-             console("MboxSend(): Invalid Mailbox ID, Returning...\n");
+             console("MboxSend(): Invalid Mailbox ID. Returning...\n");
         enable_interrupts("MboxSend");
         return -1;
     }
+
     if(MailBoxTable[mbox_id].status == INACTIVE)
     {
-      //Some error message
+        if(DEBUG2 && debugflag2)
+        {
+             console("MboxSend(): Mailbox is inactive. Returning...\n");
+        }
         enable_interrupts("MboxSend");
         return -1;
     }
     if(msg_size > MAX_MESSAGE)
     {
-      //some error message
+        if(DEBUG2 && debugflag2)
+        {
+             console("MboxSend(): Messgae sent has exceeded max length. Returning...\n");
+        }
         enable_interrupts("MboxSend");
         return -1;
     }
@@ -237,10 +244,8 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     }
 
   //If the Mail slot overflows, halt usloss
-  //TODO: This crap
     if(num_slots == MAXSLOTS)
     {
-      //check for conditional send
         if(DEBUG2 && debugflag2)
         {
              console("MboxSend(): Mailslot has overflowed. Halting...\n");
@@ -290,7 +295,6 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
   //Add slot to mailbox
     if (mbox->head == NULL)
         mbox->head = slot;
-
     else
         mbox->end->next_slot = slot;
 
@@ -324,9 +328,6 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
             temp = temp->next_proc_ptr;
         }
     }
-
-  //Block sender if mailbox has no available slots.
-  //TODO: This crap
 
     enable_interrupts("MboxSend");
     return 0;
@@ -488,6 +489,7 @@ int MboxRelease(int mailboxID)
         unblock_proc(temp->pid);
         temp = temp->next_proc_ptr;
     }
+    MailBoxTable[mailboxID].blocking = -1;
 
     enable_interrupts("MboxRelease");
     return 0;
@@ -511,6 +513,112 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
 {
     check_kernel_mode("MboxCondSend");
     disable_interrupts("MboxCondSend");
+    mail_box *mbox = &(MailBoxTable[mailboxID]);
+
+    if(DEBUG2 && debugflag2)
+        console("MboxCondSend(): Checking for possible errors...\n");
+
+  //Check for possible errors
+    if(mailboxID < 0 || mailboxID >= MAXMBOX)
+    {
+        if(DEBUG2 && debugflag2)
+             console("MboxCondSend(): Invalid Mailbox ID. Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -1;
+    }
+
+    if(MailBoxTable[mailboxID].status == INACTIVE)
+    {
+        if(DEBUG2 && debugflag2)
+        {
+             console("MboxCondSend(): Mailbox is inactive. Returning...\n");
+        }
+        enable_interrupts("MboxCondSend");
+        return -1;
+    }
+    if(message_size > MAX_MESSAGE)
+    {
+        if(DEBUG2 && debugflag2)
+        {
+             console("MboxCondSend(): Messgae sent has exceeded max length. Returning...\n");
+        }
+        enable_interrupts("MboxCondSend");
+        return -1;
+    }
+    mail_box *nBox = &MailBoxTable[mailboxID];
+
+    if(nBox->status == INACTIVE || message_size < 0 || message_size > nBox->slot_size)
+    {
+        if(DEBUG2 && debugflag2)
+             console("MboxCondSend(): Invalid argument(s). Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -1;
+    }
+
+  //If the Mail slot overflows, halt usloss
+    if(num_slots == MAXSLOTS)
+    {
+        if(DEBUG2 && debugflag2)
+        {
+             console("MboxCondSend(): Mailslot has overflowed. Halting...\n");
+        }
+        halt(1);
+    }
+
+  //Checks if there are no unused slots in the mailbox. Increments the count
+  // if there are, otherwise blocks current process
+    if (mbox->used_slots < mbox->num_slots)
+        mbox->used_slots += 1;
+
+    else
+    {
+        if(DEBUG2 && debugflag2)
+             console("MboxCondSend(): No room in mailbox. Returning...\n");
+        enable_interrupts("MboxCondSend");
+        return -2;
+    }
+
+
+  //Copy message into allocated slot (use memcpy or strcpy)
+    int nSlot_id = SlotCreate(message, message_size);
+    slot_ptr slot = &Mail_Slots[nSlot_id];
+
+  //Add slot to mailbox
+    if (mbox->head == NULL)
+        mbox->head = slot;
+    else
+        mbox->end->next_slot = slot;
+
+    mbox->end = slot;
+    num_slots++;
+
+  //Unblocks reciever if blocked while waiting for message
+    if (nBox->blocking != -1)
+    {
+        int Found = FALSE;
+        proc_ptr temp = &ProcTable[nBox->blocking];
+        proc_ptr prev = &ProcTable[nBox->blocking];
+        while (temp != NULL && Found == FALSE)
+        {
+            if (temp->status == RECEIVE_BLOCK)
+            {
+                if (temp == prev)
+                {
+                    if (temp->next_proc_ptr != NULL)
+                        mbox->blocking = temp->next_proc_ptr->pid;
+                    else
+                        mbox->blocking = -1;
+                }
+                else
+                    prev->next_proc_ptr = temp->next_proc_ptr;
+                Found = TRUE;
+                unblock_proc(temp->pid);
+                temp->status = UNUSED;
+            }
+            prev = temp;
+            temp = temp->next_proc_ptr;
+        }
+    }
 
     enable_interrupts("MboxCondSend");
     return 0;
