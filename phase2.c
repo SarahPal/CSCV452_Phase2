@@ -228,7 +228,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     {
         if(DEBUG2 && debugflag2)
         {
-             console("MboxSend(): Messgae sent has exceeded max length. Returning...\n");
+             console("MboxSend(): Message sent has exceeded max length. Returning...\n");
         }
         enable_interrupts("MboxSend");
         return -1;
@@ -355,7 +355,11 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
   //MailBox is inactive
     if(MailBoxTable[mbox_id].status == INACTIVE)
     {
-      //Some error message
+        if(DEBUG2 && debugflag2)
+        {
+             console("MboxReceive(): Mailbox is inactive. Returning...\n");
+        }
+        enable_interrupts("MboxReceive");
         return -1;
     }
 
@@ -544,7 +548,7 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
     }
     mail_box *nBox = &MailBoxTable[mailboxID];
 
-    if(nBox->status == INACTIVE || message_size < 0 || message_size > nBox->slot_size)
+    if(nBox->status == INACTIVE || message_size <= 0 || message_size > nBox->slot_size)
     {
         if(DEBUG2 && debugflag2)
              console("MboxCondSend(): Invalid argument(s). Returning...\n");
@@ -638,11 +642,84 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
     ----------------------------------------------------------------------- */
 int MboxCondReceive(int mailboxID, void *message, int max_message_size)
 {
+{
+
     check_kernel_mode("MboxCondReceive");
     disable_interrupts("MboxCondReceive");
 
+    int size;
+    mail_box *mbox = &(MailBoxTable[mailboxID]);
+
+  //MailBox is inactive
+    if(MailBoxTable[mailboxID].status == INACTIVE)
+    {
+        if(DEBUG2 && debugflag2)
+        {
+             console("MboxCondReceive(): Mailbox is inactive. Returning...\n");
+        }
+        enable_interrupts("MboxCondReceive");
+        return -1;
+    }
+
+  //Block the receiver if there are not messages in the mailbox
+    if (mbox->used_slots > 0)
+        mbox->used_slots -= 1;
+
+    else
+    {
+        if(DEBUG2 && debugflag2)
+             console("MboxCondReceive(): No room in mailbox. Returning...\n");
+        enable_interrupts("MboxCondReceive");
+        return -2;
+    }
+
+  //If one (or more) messages are available in the mailbox, memcpy the
+  //message from the slot to the receiver's buffer
+    size = mbox->head->message_size;
+
+    memcpy(message, mbox->head->message, max_message_size);
+
+  //Free the mailbox slot
+    slot_ptr temp = mbox->head;
+    mbox->head = mbox->head->next_slot;
+
+  //Update Mail_Slot structure
+    Mail_Slots[mailboxID].mbox_id = -1;
+    Mail_Slots[mailboxID].status = EMPTY;
+    Mail_Slots[mailboxID].slot_id = -1;
+    num_slots--;
+
+  //Unblocks sender if blocked while waiting to send message
+    if (mbox->blocking != -1)
+    {
+        int Found = FALSE;
+        proc_ptr temp = &ProcTable[mbox->blocking];
+        proc_ptr prev = &ProcTable[mbox->blocking];
+        while (temp != NULL && Found == FALSE)
+        {
+            if (temp->status == SEND_BLOCK)
+            {
+                if (temp == prev)
+                {
+                    if (temp->next_proc_ptr != NULL)
+                        mbox->blocking = (temp->next_proc_ptr)->pid;
+                    else
+                        mbox->blocking = -1;
+                }
+                else
+                    prev->next_proc_ptr = temp->next_proc_ptr;
+                Found = TRUE;
+                unblock_proc(temp->pid);
+                temp->status = UNUSED;
+            }
+            prev = temp;
+            temp = temp->next_proc_ptr;
+        }
+    }
+
     enable_interrupts("MboxCondReceive");
-    return 0;
+    return size;
+} /* MboxCondReceive */
 } /* MboxCondReveive */
 
 
