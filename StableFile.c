@@ -250,7 +250,7 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
   //Checks if there are no unused slots in the mailbox. Increments the count
   // if there are, otherwise blocks current process
-    if (mbox->used_slots <= mbox->num_slots && mbox->num_slots != 0)
+    if (mbox->used_slots < mbox->num_slots && mbox->num_slots != 0)
         mbox->used_slots += 1;
 
     else
