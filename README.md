@@ -3,14 +3,14 @@
 # Developed on Linux Mint System
 # Test Cases: 
 
-#   Test00: 
+#   Test00: PASS
 
 starting test 00 ....
 
 start2(): started
 All processes completed.
 
-#   Test01: 
+#   Test01: PASS
 starting test 01 ....
 
 start2(): started
@@ -18,7 +18,7 @@ start2(): MailBoxCreate returned id = 7
 start2(): MailBoxCreate returned id = 8
 All processes completed.
 
-#   Test02: 
+#   Test02: PASS
 
 starting test 02 ....
 
@@ -35,7 +35,7 @@ start2(): MailBoxCreate returned id less than zero, id = -1
 start2(): MailBoxCreate returned id less than zero, id = -1
 All processes completed.
 
-#   Test03: 
+#   Test03: PASS
 starting test 03 ....
 
 start2(): started
@@ -46,7 +46,7 @@ start2(): attempting to receive message from mailbox 7
 start2(): after receive of message, result = 12 message is 'hello there'
 All processes completed.
 
-#   Test04: 
+#   Test04: PASS
 
 starting test 04 ....
 
@@ -63,7 +63,7 @@ XXp2(): after receipt of message, result = 12
 start2(): joined with kid 5, status = -4
 All processes completed.
 
-#   Test05: 
+#   Test05: PASS
 
 starting test 05 ....
 
@@ -80,7 +80,7 @@ XXp1(): after send of message, result = 0
 start2(): joined with kid 4, status = -3
 All processes completed.
 
-#   Test06:
+#   Test06:  PASS
 
 starting test 06 ....
 
@@ -122,7 +122,7 @@ XXp2(): after receipt of message #5, result = 16
 start2(): joined with kid 5, status = -4
 All processes completed.
 
-#   Test07:
+#   Test07:  PASS
 
 starting test 07 ....
 
@@ -177,7 +177,7 @@ XXp3(): after receipt of message #7, result = 17
 start2(): joined with kid 8, status = -4
 All processes completed.
 
-#   Test08:
+#   Test08:  PASS
 
 starting test 08 ....
 
@@ -212,7 +212,7 @@ XXp3(): MboxRelease returned 0
 start2(): joined with kid 8, status = -4
 All processes completed.
 
-#   Test09: 
+#   Test09: PASS
 
 starting test 09 ....
 
@@ -248,7 +248,7 @@ XXp2c(): zap'd by MboxSend() call
 start2(): joined with kid 7, status = -3
 All processes completed.
 
-#   Test10: 
+#   Test10: PASS
 
 starting test 10 ....
 
@@ -297,7 +297,7 @@ XXp3(): after receipt of message #5, result = 17
 start2(): joined with kid 8, status = -4
 All processes completed.
 
-#   Test11: 
+#   Test11: FAIL
 
 starting test 11 ....
 
@@ -372,7 +372,7 @@ XXp3(): after receipt of message #4, result = 13
 start2(): joined with kid 5, status = -4
 All processes completed.
 
-#   Test12:
+#   Test12:  FAIL
 
 starting test 12 ....
 
@@ -441,7 +441,7 @@ XXp3(): received 5 good-bye messages from mailbox 7
 start2(): joined with kid 5, status = -4
 All processes completed.
 
-#   Test13:
+#   Test13:  FAIL
 
 starting test 13 ....
 
@@ -453,7 +453,7 @@ XXp1(): status = 0
 start2(): joined with kid 4, status = -3
 All processes completed.
 
-#   Test14:
+#   Test14:  FAIL
 
 starting test 14 ....
 
@@ -467,7 +467,7 @@ XXp1(): character received = H
 start2(): joined with kid 4, status = -3
 All processes completed.
 
-#   Test15:
+#   Test15:  PASS
 
 starting test 15 ....
 
@@ -478,7 +478,7 @@ start2(): after send of message, result = -1
 message too big
 All processes completed.
 
-#   Test16:
+#   Test16:  PASS
 
 starting test 16 ....
 
@@ -486,7 +486,7 @@ start2(): started, trying to exceed mailslots...
 finally the slots are over at mailbox 45 and slot 25
 All processes completed.
 
-#   Test17:
+#   Test17:  PASS
 
 starting test 17 ....
 
@@ -510,7 +510,7 @@ XXp2c(): zap'd by MboxSend() call
 start2(): joined with kid 6, status = -3
 All processes completed.
 
-#   Test18:
+#   Test18:  PASS
 
 starting test 18 ....
 
@@ -531,7 +531,7 @@ XXp2c(): zap'd by MboxReceive() call
 start2(): joined with kid 6, status = -3
 All processes completed.
 
-#   Test19:
+#   Test19:  PASS
 
 starting test 19 ....
 
@@ -556,7 +556,7 @@ start2(): joined with kid 6, status = -3
 failed to send to released mailbox ... success
 All processes completed.
 
-#   Test20:
+#   Test20:  PASS
 
 starting test 20 ....
 
@@ -581,7 +581,7 @@ start2(): joined with kid 6, status = -3
 failed to recv from released mailbox ... success
 All processes completed.
 
-#   Test21:
+#   Test21:  FAIL
 
 starting test 21 ....
 
@@ -603,7 +603,7 @@ XXp2(): after receipt of message #1, result = 16
 start2(): joined with kid 5, status = -4
 All processes completed.
 
-#   Test22:
+#   Test22:  FAIL
 
 starting test 22 ....
 
@@ -625,7 +625,7 @@ XXp1(): after send of message #1, result = 0
 start2(): joined with kid 4, status = -3
 All processes completed.
 
-#   Test23:
+#   Test23:  PASS
 
 starting test 23 ....
 
@@ -659,7 +659,7 @@ XXp3(): join'd with child 5 whose status is -4
 start2(): joined with kid 4, status = -5
 All processes completed.
 
-#   Test24:
+#   Test24:  FAIL
 
 starting test 24 ....
 
@@ -700,7 +700,7 @@ XXp3(): join'd with child 5 whose status is -4
 start2(): joined with kid 4, status = -5
 All processes completed.
 
-#   Test25:
+#   Test25:  PASS
 
 starting test 25 ....
 
@@ -729,7 +729,7 @@ start2(): MailBoxCreate returned id less than zero, id = -1
 start2(): MailBoxCreate returned id less than zero, id = -1
 All processes completed.
 
-#   Test26:
+#   Test26: PASS
 
 starting test 26 ....
 
@@ -774,7 +774,7 @@ XXp3(): MboxRelease returned 0
 start2(): joined with kid 8, status = -4
 All processes completed.
 
-#   Test27:
+#   Test27: PASS
 
 starting test 27 ....
 
@@ -820,7 +820,7 @@ XXp1(): after send of message #4, result = -1
 start2(): joined with kid 4, status = -3
 All processes completed.
 
-#   Test28:
+#   Test28: PASS
 
 starting test 28 ....
 
@@ -844,7 +844,7 @@ start2(): joined with kid 7, status = -4
 failed to recv from released mailbox ... success
 All processes completed.
 
-#   Test29:
+#   Test29: PASS
 
 starting test 29 ....
 
@@ -868,8 +868,8 @@ start2(): joined with kid 7, status = -4
 failed to send to released mailbox ... success
 All processes completed.
 
-#   Test30:
-
+#   Test30: PASS
+ 
 starting test 30 ....
 
 start2(): started
@@ -886,7 +886,7 @@ XXp4(): after release of mailbox, result = 0
 XXp1(): after send of message, result = -3
 All processes completed.
 
-#   Test31:
+#   Test31: PASS
 
 starting test 31 ....
 
@@ -904,7 +904,7 @@ XXp1(): after send of message, result = -3
 start2(): after send of message, result = -3
 All processes completed.
 
-#   Test32:
+#   Test32: FAIL
 
 starting test 32 ....
 
@@ -940,7 +940,7 @@ start2(): joined with kid 7, status = -3
 
 All processes completed.
 
-#   Test33:
+#   Test33: PASS
 
 starting test 33 ....
 
@@ -953,7 +953,7 @@ start2(): after receive of message, result = 12
           message is 'hello there'
 All processes completed.
 
-#   Test34:
+#   Test34: PASS
 
 starting test 34 ....
 
@@ -964,7 +964,7 @@ start2(): after send of message, result = -1
 start2(): message was too large (expected).
 All processes completed.
 
-#   Test35:
+#   Test35: PASS
 
 starting test 35 ....
 
@@ -994,7 +994,7 @@ start2(): after receive of message, result = 0
 start2(): passed...
 All processes completed.
 
-#   Test36:
+#   Test36: FAIL
 
 starting test 36 ....
 
@@ -1002,7 +1002,7 @@ start2(): putting itself into user mode
 start2(): calling usyscall executing syscall 0, this should halt
 nullsys(): Invalid syscall 0. Halting...
 
-#   Test37:
+#   Test37: FAIL
 
 starting test 37 ....
 
@@ -1011,7 +1011,7 @@ start2(): calling usyscall executing syscall MAXSYSCALLS - 1,
           this should halt
 nullsys(): Invalid syscall 49. Halting...
 
-#   Test38:
+#   Test38: FAIL
 
 starting test 38 ....
 
@@ -1019,7 +1019,8 @@ start2(): putting itself into user mode
 start2(): calling usyscall executing syscall 0, this should halt
 syscall_handler(): sys number 50 is wrong.  Halting...
 
-#   Test39:
+#   Test35: PASS
+#   Test39: 
 
 starting test 39 ....
 
@@ -1034,7 +1035,7 @@ start2(): after receive of message, result = -1
 start2(): got that message was too big. PASSED!
 All processes completed.
 
-#   Test40:
+#   Test40: PASS
 
 starting test 40 ....
 
@@ -1052,7 +1053,7 @@ start2(): joining with child
 XXp1(): after send of message, result = 0 
 All processes completed.
 
-#   Test41:
+#   Test41: PASS
 
 starting test 41 ....
 
@@ -1111,7 +1112,7 @@ XXp3(): received 0 good-bye messages from mailbox 7
 start2(): joined with kid 5, status = -4
 All processes completed.
 
-#   Test42:
+#   Test42:  FAIL
 
 starting test 42 ....
 
