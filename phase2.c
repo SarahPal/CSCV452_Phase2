@@ -1,3 +1,4 @@
+
 /* ------------------------------------------------------------------------
     phase2.c
     University of Arizona South
@@ -18,7 +19,7 @@ int start1 (char *);
 extern int start2 (char *);
 
 int MboxCreate(int slots, int slot_size);
-int SlotCreate(mail_box *mbox, void *msg_ptr, int msg_size);
+int SlotCreate(void *msg_ptr, int msg_size);
 int MboxSend(int mbox_id, void *msg_ptr, int msg_size);
 int MboxReceive(int mbox_id, void *msg_ptr, int msg_size);
 int MboxRelease(int mailboxID);
@@ -26,13 +27,6 @@ int MboxCondSend(int mailboxID, void *message, int message_size);
 int MboxCondReceive(int mailboxID, void *message, int max_message_size);
 int waitdevice(int type, int unit, int *status);
 int getInactive();
-int get_slot();
-
-static void nullsys(sysargs *args);
-static void clockHandler(int dev, void *args);
-static void diskHandler(int dev, void *args);
-static void terminalHandler(int dev, void *args);
-static void syscallHandler(int dec, void *args);
 
 static void check_kernel_mode(char *caller_name);
 static void enable_interrupts(char *caller_name);
@@ -40,13 +34,11 @@ static void disable_interrupts(char *caller_name);
 
 
 /* -------------------------- Globals ------------------------------------- */
-void (*sys_vec[MAXSYSCALLS])(sysargs *args);
 
 int debugflag2 = 0;
 int numMailboxes = 0;
 int next_slot_id = 0;
 int num_slots = 0;
-int ticks =0;
 
 /* the mail boxes */
 mail_box MailBoxTable[MAXMBOX];
@@ -54,8 +46,6 @@ mail_slot Mail_Slots[MAXSLOTS];
 
 //Define a new Process Table
 proc_struct ProcTable[MAXPROC];
-
-int IntHandMB[7];
 
 /* -------------------------- Functions ----------------------------------- */
 
@@ -106,8 +96,12 @@ int start1(char *arg)
        ProcTable[i].status = UNUSED;
        ProcTable[i].next_proc_ptr = NULL;
     }
+  //TODO: initialize int_vec
+  //TODO: initialize sys_vec
 
-    //Interrupt mailboxes.
+  //Interrupt mailboxes.
+    int IntHandMB[7];
+
     IntHandMB[CLOCKMB] = MboxCreate(0, sizeof(int)); //Clock MB
     IntHandMB[TERMMB] = MboxCreate(0, sizeof(int)); //Terminal 1
     IntHandMB[TERMMB + 1] = MboxCreate(0, sizeof(int)); //Terminal 2
@@ -116,18 +110,6 @@ int start1(char *arg)
     IntHandMB[DISKMB] = MboxCreate(0, sizeof(int)); //Disk 1
     IntHandMB[DISKMB + 1] = MboxCreate(0, sizeof(int)); //Disk 2
 
-    int int_vec[4];
-    int sys_vec[MAXSYSCALLS];
-
-    int_vec[CLOCK_INT] = clockHandler;
-    int_vec[DISK_INT] = diskHandler;
-    int_vec[TERM_INT] = terminalHandler;
-    int_vec[SYSCALL_INT] = syscallHandler;
-
-    for(int i = 0; i < MAXSYSCALLS; i++)
-    {
-         sys_vec[i] = nullsys;
-    }
 
     enable_interrupts("start1");
 
@@ -159,24 +141,17 @@ int MboxCreate(int slots, int slot_size)
     disable_interrupts("MboxCreate");
     int next_Available = getInactive();
 
+    if(slot_size > MAX_MESSAGE || slot_size < 0 || slots < 0)
+    {
+        if(DEBUG2 && debugflag2)
+            console("MboxCreate(): Invalid arguments. Returning...\n");
+        return -1;
+    }
     if(next_Available == -1)
     {
         if(DEBUG2 && debugflag2)
-        {
              console("MboxCreate: max boxes reached, returning...");
-        }
-        return -1;
-    }
-    if(slot_size > MAX_MESSAGE || slot_size < 0)
-    {
-        if(DEBUG2 && debugflag2)
-        {
-            console("MboxCreate(): Incorrect slot size. Returning...\n");
-        }
-        return -1;
-    }
-    if(slots < 0 || slots > MAXSLOTS)
-    {
+
         return -1;
     }
     mail_box *nBox = &MailBoxTable[next_Available];
@@ -189,49 +164,32 @@ int MboxCreate(int slots, int slot_size)
     nBox->blocking = -1;
 
     if(DEBUG2 && debugflag2)
-    {
         console("Created mailbox with id %d, total slots = %d, slot size = %d\n",
-        nBox->mbox_id, nBox->num_slots,nBox->slot_size);
-    }
+                nBox->mbox_id, nBox->num_slots,nBox->slot_size);
+
     enable_interrupts("MboxCreate");
     return nBox->mbox_id;
 } /* MboxCreate */
 
-int SlotCreate(mail_box *mbox, void *msg_ptr, int msg_size)
+int SlotCreate(void *msg_ptr, int msg_size)
 {
-    int slot_id = get_slot();
+    check_kernel_mode("SlotCreate");
+    disable_interrupts("SlotCreate");
 
-    if(slot_id == -1)
-    {
-        return -1;
-    }
-
-    slot_ptr slot = &Mail_Slots[slot_id];
-
-    if(mbox->head == NULL)
-    {
-        mbox->head = slot;
-    }
-    else
-    {
-        mbox->end->next_slot = slot;
-    }
-    mbox->end = slot;
-
+    slot_ptr slot = &Mail_Slots[next_slot_id];
     slot->slot_id = next_slot_id++;
     slot->status = USED;
-    memcpy(slot->message, msg_ptr, msg_size);
     slot->message_size = msg_size;
-    slot->next_slot = NULL;
     num_slots++;
 
-    mbox->used_slots++;
+    memcpy(slot->message, msg_ptr, msg_size);
 
     if(DEBUG2 && debugflag2)
         console("SlotCreate(): Created new slot with slot ID: %d \n", slot->slot_id);
-    //enable_interrupts("SlotCreate");
+    enable_interrupts("SlotCreate");
 
-    return 0;
+  //console("Slot ID: %d\n", slot->slot_id);
+    return slot->slot_id;
 
 } /* SlotCreate */
 
@@ -265,18 +223,16 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     if(MailBoxTable[mbox_id].status == INACTIVE)
     {
         if(DEBUG2 && debugflag2)
-        {
              console("MboxSend(): Mailbox is inactive. Returning...\n");
-        }
+
         enable_interrupts("MboxSend");
         return -1;
     }
     if(msg_size > MAX_MESSAGE)
     {
         if(DEBUG2 && debugflag2)
-        {
              console("MboxSend(): Message sent has exceeded max length. Returning...\n");
-        }
+
         enable_interrupts("MboxSend");
         return -1;
     }
@@ -294,15 +250,14 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
     if(num_slots == MAXSLOTS)
     {
         if(DEBUG2 && debugflag2)
-        {
              console("MboxSend(): Mailslot has overflowed. Halting...\n");
-        }
+
         halt(1);
     }
 
   //Checks if there are no unused slots in the mailbox. Increments the count
   // if there are, otherwise blocks current process
-    if (mbox->used_slots <= mbox->num_slots)
+    if (mbox->used_slots < mbox->num_slots && mbox->num_slots != 0)
         mbox->used_slots += 1;
 
     else
@@ -335,16 +290,17 @@ int MboxSend(int mbox_id, void *msg_ptr, int msg_size)
 
 
   //Copy message into allocated slot (use memcpy or strcpy)
-    SlotCreate(mbox, msg_ptr, msg_size);
+    int nSlot_id = SlotCreate(msg_ptr, msg_size);
+    slot_ptr slot = &Mail_Slots[nSlot_id];
 
   //Add slot to mailbox
-    /*if (mbox->head == NULL)
+    if (mbox->head == NULL)
         mbox->head = slot;
     else
         mbox->end->next_slot = slot;
 
     mbox->end = slot;
-    num_slots++;*/
+    num_slots++;
 
   //Unblocks reciever if blocked while waiting for message
     if (nBox->blocking != -1)
@@ -402,13 +358,17 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
     if(MailBoxTable[mbox_id].status == INACTIVE)
     {
         if(DEBUG2 && debugflag2)
-        {
-             console("MboxReceive(): Mailbox is inactive. Returning...\n");
-        }
+            console("MboxReceive(): Mailbox is inactive. Returning...\n");
+
         enable_interrupts("MboxReceive");
         return -1;
     }
 
+    if(sizeof(msg_ptr) < msg_size)
+    {
+        return -1;
+    }
+    
   //Block the receiver if there are not messages in the mailbox
     if (mbox->used_slots > 0)
         mbox->used_slots -= 1;
@@ -434,10 +394,16 @@ int MboxReceive(int mbox_id, void *msg_ptr, int msg_size)
         mbox->used_slots += 1;
     }
 
+  //Checks if the mailbox was closed during block
+    if (mbox->mbox_id == -1)
+    {
+        enable_interrupts("MboxReceive");
+        return -3;
+    }
+
   //If one (or more) messages are available in the mailbox, memcpy the
   //message from the slot to the receiver's buffer
     size = mbox->head->message_size;
-
     memcpy(msg_ptr, mbox->head->message, msg_size);
 
   //Free the mailbox slot
@@ -614,10 +580,7 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
 
   //Checks if there are no unused slots in the mailbox. Increments the count
   // if there are, otherwise blocks current process
-    if (mbox->used_slots < mbox->num_slots)
-        mbox->used_slots += 1;
-
-    else
+    if (mbox->used_slots == mbox->num_slots)
     {
         if(DEBUG2 && debugflag2)
              console("MboxCondSend(): No room in mailbox. Returning...\n");
@@ -625,24 +588,24 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
         return -2;
     }
 
+    else
+    {
+        mbox->used_slots++;
+    }
+
 
   //Copy message into allocated slot (use memcpy or strcpy)
-    int nSlot_id = SlotCreate(mbox, message, message_size);
-    if(nSlot_id == -1)
-    {
-        if(DEBUG2 && debugflag2)
-            console("MboxCondSend(): Unable to create mail slot. Returning...\n");
-        enable_interrupts("MboxCondSend");
-        return -2;
-    }
+    int nSlot_id = SlotCreate(message, message_size);
+    slot_ptr slot = &Mail_Slots[nSlot_id];
+
   //Add slot to mailbox
-    /*if (mbox->head == NULL)
+    if (mbox->head == NULL)
         mbox->head = slot;
     else
         mbox->end->next_slot = slot;
 
     mbox->end = slot;
-    num_slots++;*/
+    num_slots++;
 
   //Unblocks reciever if blocked while waiting for message
     if (nBox->blocking != -1)
@@ -693,7 +656,6 @@ int MboxCondSend(int mailboxID, void *message, int message_size)
     ----------------------------------------------------------------------- */
 int MboxCondReceive(int mailboxID, void *message, int max_message_size)
 {
-{
 
     check_kernel_mode("MboxCondReceive");
     disable_interrupts("MboxCondReceive");
@@ -727,7 +689,6 @@ int MboxCondReceive(int mailboxID, void *message, int max_message_size)
   //If one (or more) messages are available in the mailbox, memcpy the
   //message from the slot to the receiver's buffer
     size = mbox->head->message_size;
-
     memcpy(message, mbox->head->message, max_message_size);
 
   //Free the mailbox slot
@@ -771,7 +732,6 @@ int MboxCondReceive(int mailboxID, void *message, int max_message_size)
     enable_interrupts("MboxCondReceive");
     return size;
 } /* MboxCondReceive */
-} /* MboxCondReveive */
 
 
 /* ------------------------------------------------------------------------
@@ -789,35 +749,12 @@ int waitdevice(int type, int unit, int *status)
     check_kernel_mode("waitdevice");
     disable_interrupts("waitdevice");
 
-    mail_box *mbox;
+  //use MboxReceive on the appropriate mailbox.
+    *status = MboxReceive(type + unit, NULL, 2 * sizeof(int));
 
-    switch(type)
-    {
-        case CLOCK_DEV:
-            mbox = &MailBoxTable[IntHandMB[CLOCKMB]];
-            console("leaving switch\n");
-            break;
-        case DISK_INT:
-            mbox = &MailBoxTable[IntHandMB[unit]];
-            break;
-        case TERM_INT:
-            mbox = &MailBoxTable[IntHandMB[unit]];
-            break;
-    }
-
-    add_process();
-    MboxReceive(mbox->mbox_id, status, sizeof(int));
-    release_process();
-
-    if(is_zapped())
-    {
-        return -1;
-    }
     enable_interrupts("waitdevice");
 
     return 0;
-  //Called when a process wants to receive results of i/o operations
-  //Applicable to Test 13 and test14
 } /* waitdevice */
 
 
@@ -832,117 +769,6 @@ int getInactive()
        }
     }
     return -1;
-}
-
-static void nullsys(sysargs *args) {
-    console("nullsys(): Invalid syscall %d. Halting...\n", args->number);
-    halt(1);
-}
-
-int get_slot()
-{
-    int i;
-
-    for(i =0; i < MAXSLOTS; i++)
-    {
-        if(Mail_Slots[i].status != USED)
-        {
-            break;
-        }
-    }
-
-    if(i == MAXSLOTS)
-    {
-        return -1;
-    }
-
-    return i;
-}
-
-static void clockHandler(int dev, void *args)
-{
-    long unit = (long) args;
-
-    int clock_res;
-
-    if(read_cur_start_time() >= 80000)
-    {
-        time_slice();
-    }
-    ticks++;
-    device_input(dev, unit, &clock_res);
-
-    if(ticks % 5 == 0)
-    {
-        int send_res = MboxCondSend(IntHandMB[CLOCKMB], &clock_res, sizeof(clock_res));
-    }
-
-
-}
-static void diskHandler(int dev, void *args)
-{
-    long unit = (long) args;
-    int disk_res;
-
-    if(dev != DISK_DEV || unit < 0 || unit > DISK_UNITS)
-    {
-        console("diskHandler(): Incorrect values. Halting...\n");
-        halt(1);
-    }
-    if(IntHandMB[unit]== -1)
-    {
-        console("disk Mailbox does not exist. Halting...\n");
-        halt(1);
-    }
-
-    device_input(DISK_DEV, unit, &disk_res);
-    MboxCondSend(IntHandMB[unit], &disk_res, sizeof(disk_res));
-}
-static void terminalHandler(int dev, void *args)
-{
-    long unit = (long) args;
-
-    int term_res;
-    if(dev != TERM_DEV || unit < 0 || unit > TERM_UNITS)
-    {
-        console("terminalHandler(): Invalid Terminal value. Halting...\n");
-        halt(1);
-    }
-
-    if(IntHandMB[unit] == -1)
-    {
-        console("terminalHandler(): Indicated mailbox does not exist. Halting...\n");
-        halt(1);
-    }
-
-    int res = device_input(TERM_DEV, unit, &term_res);
-
-    MboxCondSend(IntHandMB[unit], &term_res, sizeof(term_res));
-    if(res != DEV_OK)
-    {
-        console("terminalHandler(): Device input is not okay. Halting...\n");
-        halt(1);
-    }
-
-}
-static void syscallHandler(int dev, void *args)
-{
-    sysargs *sys_ptr = (sysargs *) args;
-
-    if(dev != SYSCALL_INT)
-    {
-        console("syscallHandler(): Bad Call. Halting...\n");
-        halt(1);
-    }
-    if(sys_ptr->number < 0 || sys_ptr >= MAXSYSCALLS)
-    {
-        console("syscallHandler(): sys number %d is wrong. Halting...\n", sys_ptr->number);
-        halt(1);
-    }
-
-    psr_set(psr_get() | PSR_CURRENT_INT);
-    sys_vec[sys_ptr->number](sys_ptr);
-
 }
 /*----------------------------------------------------------------*
  * Name        : check_kernel_mode                                *
